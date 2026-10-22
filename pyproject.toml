@@ -1,0 +1,108 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agencyzoom-sdk"
+description = "Unofficial, fully-typed Python SDK (sync + async) for the AgencyZoom REST API."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Jatin Yadav", email = "jatin@coversmart.ai" }]
+keywords = ["agencyzoom", "insurance", "crm", "api", "sdk", "client"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.24,<1",
+    "pydantic>=2.7,<3",
+    "typing-extensions>=4.7",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+http2 = ["httpx[http2]>=0.24,<1"]
+
+[dependency-groups]
+# PEP 735 groups: `uv sync` installs `dev` by default; pip >= 25.1 supports `pip install --group dev`.
+test = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.24",
+    "respx>=0.20.2",  # earlier releases cannot mock httpx 0.24
+    "pyyaml>=6.0.1",  # 6.0 fails to build with current Cython
+]
+lint = [
+    "ruff>=0.6",
+    "mypy>=1.11; python_version >= '3.10'",
+]
+codegen = ["pyyaml>=6.0.1"]
+dev = [
+    { include-group = "test" },
+    { include-group = "lint" },
+    { include-group = "codegen" },
+]
+
+[project.urls]
+Homepage = "https://github.com/jatinyadav/agencyzoom-python-sdk"
+"API Reference" = "https://app.agencyzoom.com/openapi/"
+Changelog = "https://github.com/jatinyadav/agencyzoom-python-sdk/blob/main/CHANGELOG.md"
+Issues = "https://github.com/jatinyadav/agencyzoom-python-sdk/issues"
+
+[tool.hatch.version]
+path = "src/agencyzoom/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agencyzoom"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/agencyzoom", "tests", "README.md", "CHANGELOG.md", "MAINTAINING.md", "LICENSE"]
+
+# --------------------------------------------------------------------------- tooling
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "N", "C4", "PIE", "PT", "RET"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Generated from the OpenAPI spec: field descriptions are long and names mirror the API.
+"src/agencyzoom/models/_generated.py" = ["E501", "N815", "RUF001", "RUF002", "RUF003", "UP006", "UP007", "UP035", "UP045"]
+# Generated from _async/: `yield from` is not available in async generators.
+"src/agencyzoom/_sync/**" = ["UP028"]
+"tests/**" = ["B011"]
+
+[tool.mypy]
+# mypy itself can only target 3.10+; Python 3.8/3.9 compatibility is verified by
+# running the test suite on those interpreters (see `make test-all`).
+python_version = "3.10"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["src/agencyzoom"]
+
+[[tool.mypy.overrides]]
+module = "agencyzoom.models._generated"
+disable_error_code = ["assignment"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-ra --strict-markers"

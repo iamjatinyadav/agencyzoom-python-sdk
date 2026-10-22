@@ -1,0 +1,134 @@
+"""Base class for API resource groups (``client.leads``, ``client.tasks``, ...)."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, AsyncIterator, List, Mapping, TypeVar, overload
+
+from .._utils import PreparedFile, parse_response
+from ._http import AsyncHTTPClient
+
+__all__ = ["AsyncAPIResource"]
+
+T = TypeVar("T")
+
+logger = logging.getLogger("agencyzoom")
+
+#: Safety valve against runaway pagination.
+MAX_PAGES = 10_000
+
+
+class AsyncAPIResource:
+    """Typed access to registered endpoints.
+
+    Passing ``cast_to=SomeModel`` (or ``List[SomeModel]``) validates the response
+    into that type, and ``_call`` is typed to return it.
+    """
+
+    def __init__(self, http: AsyncHTTPClient) -> None:
+        self._http = http
+
+    @overload
+    async def _call(
+        self,
+        endpoint_id: str,
+        *,
+        path_params: Mapping[str, object] | None = ...,
+        params: Mapping[str, Any] | None = ...,
+        body: Any = ...,
+        data: Mapping[str, Any] | None = ...,
+        files: list[PreparedFile] | None = ...,
+        headers: Mapping[str, str] | None = ...,
+        cast_to: type[T],
+        authenticated: bool = ...,
+        cache: bool = ...,
+    ) -> T: ...
+    @overload
+    async def _call(
+        self,
+        endpoint_id: str,
+        *,
+        path_params: Mapping[str, object] | None = ...,
+        params: Mapping[str, Any] | None = ...,
+        body: Any = ...,
+        data: Mapping[str, Any] | None = ...,
+        files: list[PreparedFile] | None = ...,
+        headers: Mapping[str, str] | None = ...,
+        cast_to: object = ...,
+        authenticated: bool = ...,
+        cache: bool = ...,
+    ) -> Any: ...
+    async def _call(
+        self,
+        endpoint_id: str,
+        *,
+        path_params: Mapping[str, object] | None = None,
+        params: Mapping[str, Any] | None = None,
+        body: Any = None,
+        data: Mapping[str, Any] | None = None,
+        files: list[PreparedFile] | None = None,
+        headers: Mapping[str, str] | None = None,
+        cast_to: object = None,
+        authenticated: bool = True,
+        cache: bool = False,
+    ) -> Any:
+        return await self._http.call(
+            endpoint_id,
+            path_params=path_params,
+            params=params,
+            json=body,
+            data=data,
+            files=files,
+            headers=headers,
+            cast_to=cast_to,
+            authenticated=authenticated,
+            cache=cache,
+        )
+
+    async def _paginate(
+        self,
+        endpoint_id: str,
+        body: dict[str, Any],
+        *,
+        items_key: str,
+        item_type: type[T],
+        page_size: int,
+    ) -> AsyncIterator[T]:
+        """Yield every item of a paged ``POST`` search, fetching pages lazily.
+
+        Stops when ``totalCount`` items have been seen, a page comes back short or
+        empty, or the server returns the same page twice (i.e. ignores ``page``).
+        """
+        body = {**body, "pageSize": body.get("pageSize") or page_size}
+        size = int(body["pageSize"])
+        page = int(body.get("page") or 0)
+        seen = 0
+        previous: list[Any] | None = None
+        for _ in range(MAX_PAGES):
+            payload = await self._http.call(endpoint_id, json={**body, "page": page})
+            if not isinstance(payload, dict):
+                return
+            raw_items = payload.get(items_key) or []
+            if not isinstance(raw_items, list) or not raw_items:
+                return
+            if raw_items == previous:
+                logger.warning("%s returned the same page twice; stopping pagination", endpoint_id)
+                return
+            previous = raw_items
+            items: list[T] = parse_response(List[item_type], raw_items)  # type: ignore[valid-type]
+            for item in items:
+                yield item
+            seen += len(items)
+            total = _as_int(payload.get("totalCount"))
+            if len(items) < size or (total is not None and seen >= total):
+                return
+            page += 1
+
+
+def _as_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
