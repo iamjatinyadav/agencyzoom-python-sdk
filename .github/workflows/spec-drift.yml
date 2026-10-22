@@ -1,0 +1,33 @@
+name: Spec drift
+
+# AgencyZoom's OpenAPI spec is not stored in this repo (it's proprietary), so this
+# workflow downloads it from their public docs and checks the SDK against it.
+#
+# * Spec unchanged -> regenerate models and run the spec tests: they must pass.
+# * Spec changed   -> fail, so GitHub emails you that AgencyZoom changed its API.
+#   Then locally: make spec-update && make generate && make test
+on:
+  schedule:
+    - cron: "17 6 * * 1"   # every Monday 06:17 UTC
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  spec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --python 3.13
+      - name: Download the live spec and compare with the pinned fingerprint
+        run: uv run python scripts/fetch_spec.py
+      - name: Models match the spec
+        run: |
+          uv run python scripts/generate_models.py
+          git diff --exit-code -- src/agencyzoom/models/_generated.py
+      - name: Endpoint registry matches the spec
+        run: uv run pytest tests/test_endpoint_coverage.py -v

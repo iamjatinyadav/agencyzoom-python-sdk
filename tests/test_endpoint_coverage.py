@@ -25,6 +25,12 @@ def normalise(path: str) -> str:
     return re.sub(r"\{[^}]*\}", "{}", path)
 
 
+requires_spec = pytest.mark.skipif(
+    not SPEC.exists(),
+    reason="openapi/agencyzoom.yaml is not committed; run `make spec` to download it",
+)
+
+
 def spec_operations() -> set[tuple[str, str]]:
     spec = yaml.safe_load(SPEC.read_text("utf-8"))
     return {
@@ -64,6 +70,7 @@ def resource_calls() -> list[tuple[str, set[str] | None]]:
     return calls
 
 
+@requires_spec
 def test_registry_matches_the_spec_exactly() -> None:
     spec, registry = spec_operations(), registry_operations()
     assert not spec - registry, (

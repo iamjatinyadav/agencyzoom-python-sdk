@@ -10,6 +10,7 @@ The working manual for whoever maintains this package: how the code is laid out,
 brew install uv                  # or: curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone https://github.com/iamjatinyadav/agencyzoom-python-sdk && cd agencyzoom-python-sdk
 uv sync                          # .venv with runtime + dev dependencies, pinned by uv.lock
+make spec                        # download AgencyZoom's spec (it is deliberately not committed)
 make check                       # lint + mypy --strict + tests + generated-code check
 ```
 
@@ -20,8 +21,12 @@ make check                       # lint + mypy --strict + tests + generated-code
 ## 2. Architecture in one page
 
 ```
-openapi/agencyzoom.yaml ──► scripts/generate_models.py ──► src/agencyzoom/models/_generated.py
-                                                           (230+ Pydantic models, never edited by hand)
+AgencyZoom's public docs ──► scripts/fetch_spec.py ──► openapi/agencyzoom.yaml (git-ignored)
+                                                                   │  fingerprint pinned in
+                                                                   │  openapi/agencyzoom.yaml.sha256
+                                                                   ▼
+                                            scripts/generate_models.py ──► src/agencyzoom/models/_generated.py
+                                                                           (230+ Pydantic models, never edited by hand)
 
 src/agencyzoom/_endpoints.py      ENDPOINTS registry: ID -> (method, version-relative path)
 src/agencyzoom/_async/            HAND-WRITTEN async client  ──► scripts/unasync.py ──► src/agencyzoom/_sync/
@@ -52,11 +57,15 @@ src/agencyzoom/_async/            HAND-WRITTEN async client  ──► scripts/u
 
 ### 3.1 AgencyZoom updated its API spec
 
+You'll usually find out from the **Spec drift** workflow, which checks the live spec every Monday and on every push, and fails (GitHub emails you) when it changes.
+
 ```bash
-curl -sL https://app.agencyzoom.com/openapi/agencyzoom.yaml -o openapi/agencyzoom.yaml
-git diff --stat openapi/                 # see what changed
+cp openapi/agencyzoom.yaml /tmp/old-spec.yaml   # if you have the previous copy
+make spec-update                         # download the new spec and pin its fingerprint
+diff /tmp/old-spec.yaml openapi/agencyzoom.yaml | less   # see what changed
 make generate                            # regenerate models + sync client
 make test
+git add openapi/agencyzoom.yaml.sha256 src/  # commit the new pin and regenerated code, NOT the spec
 ```
 
 `tests/test_endpoint_coverage.py` then tells you exactly what's left to do:
@@ -92,14 +101,14 @@ Users can move without a release: `api_version="v2"`, `api_root=...`, or `endpoi
 
 - **Everything moved:** change `DEFAULT_API_VERSION` in `_config.py`. That's a **major** release, because default behaviour changes.
 - **Some endpoints moved:** registry paths are relative, so for an endpoint that lives only under v2, store an **absolute** path in the registry entry and teach `EndpointResolver.resolve` to skip prefixing paths that start with the version (or add a `version` field to `Endpoint`). Add a test in `tests/test_edge_cases.py::TestVersioning`.
-- **Request or response shapes changed:** vendor the v2 spec as `openapi/agencyzoom-v2.yaml`, generate its models into a separate module (e.g. `models/v2.py`), and keep the v1 models for compatibility.
+- **Request or response shapes changed:** teach `scripts/fetch_spec.py` to download the v2 spec as `openapi/agencyzoom-v2.yaml` (git-ignored like v1, with its own `.sha256` pin), generate its models into a separate module (e.g. `models/v2.py`), and keep the v1 models for compatibility.
 
 ### 3.4 A model field has the wrong type
 
 AgencyZoom sometimes returns data that contradicts its spec. The SDK already copes by setting the field to `None` and logging a warning, but if a field is *consistently* different, fix it at the source:
 
 - Prefer fixing the generator, e.g. a mapping of schema field → corrected type in `scripts/generate_models.py`, so the fix survives regeneration.
-- Patching `openapi/agencyzoom.yaml` also works, but re-downloading the spec overwrites it. If you do, note it in this file.
+- Don't patch `openapi/agencyzoom.yaml`: it isn't committed, so a patch would be lost on the next download.
 
 ### 3.5 Updating dependencies
 
@@ -163,7 +172,17 @@ Without CI, `uv build && uv publish` also works (it asks for a PyPI token).
 
 ---
 
-## 6. Sister SDKs
+## 6. Legal hygiene (keep doing this)
+
+This is an unofficial client for a proprietary product, so:
+
+- **Never commit AgencyZoom's spec or other docs.** `.gitignore` blocks `openapi/*.yaml|yml|json`. Commit only the `.sha256` fingerprint. The spec is marked "Propriety license", and the repo history was rewritten once to remove a copy.
+- **Keep "unofficial" and the "not affiliated with or endorsed by AgencyZoom or Vertafore" notice** at the top of the README, which is also the PyPI page.
+- **Don't use their logos**, and don't word anything as if it came from AgencyZoom.
+- **The governing terms** are the Vertafore Standard Terms (https://www.vertafore.com/terms, linked from agencyzoom.com). The `termsOfService` link inside the spec (`agencyzoom.com/tos`) returned 404 when checked on 2026-10-22.
+- If AgencyZoom or Vertafore ever asks for a change (a rename, a takedown, or adopting the project), act on it promptly. The package can be renamed, or yanked on PyPI.
+
+## 7. Sister SDKs
 
 `agencyzoom-go-sdk/` and `agencyzoom-rust-sdk/` implement the same design: the same endpoint IDs, the same versioning options, and the same retry and auth rules.
 

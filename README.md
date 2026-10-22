@@ -439,11 +439,18 @@ logging.getLogger("agencyzoom").setLevel(logging.DEBUG)
 ```bash
 git clone https://github.com/iamjatinyadav/agencyzoom-python-sdk && cd agencyzoom-python-sdk
 uv sync            # creates .venv with every dev tool
+make spec          # download AgencyZoom's API spec (not stored in this repo)
 make check         # lint + types + tests
 ```
 
 See **[MAINTAINING.md](MAINTAINING.md)** for the architecture, how to handle AgencyZoom API changes, and how to cut a release.
 
+## Disclaimer
+
+This is an independent, community-maintained project. It is **not affiliated with, endorsed by, or supported by AgencyZoom or Vertafore, Inc.** "AgencyZoom" and "Vertafore" are trademarks of their respective owners. They're used here only to say which API this library works with.
+
+Your use of the AgencyZoom API through this library is governed by your own agreement with Vertafore. This repository doesn't contain or redistribute AgencyZoom's API documentation or specification.
+
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT for this library's code. See [LICENSE](LICENSE).

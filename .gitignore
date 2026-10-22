@@ -13,3 +13,9 @@ htmlcov/
 .env
 .DS_Store
 .venvs/
+
+# AgencyZoom's OpenAPI spec is proprietary: never commit it. `make spec` downloads it.
+# Only its fingerprint (openapi/agencyzoom.yaml.sha256) is tracked.
+openapi/*.yaml
+openapi/*.yml
+openapi/*.json

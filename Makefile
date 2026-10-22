@@ -1,13 +1,22 @@
 # Every target uses uv (https://docs.astral.sh/uv/). `make help` lists them.
 PYTHONS ?= 3.8 3.9 3.10 3.11 3.12 3.13 3.14
 
-.PHONY: help install generate lint format typecheck test test-all check build clean
+.PHONY: help install spec spec-update spec-check generate lint format typecheck test test-all check build clean
 
 help:  ## Show available targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
 install:  ## Create .venv with all dev dependencies
 	uv sync
+
+spec:  ## Download AgencyZoom's spec (not committed); fails if it changed since pinned
+	uv run python scripts/fetch_spec.py
+
+spec-update:  ## Download the spec and pin the new version (after AgencyZoom changes it)
+	uv run python scripts/fetch_spec.py --update
+
+spec-check:  ## Exit 1 if AgencyZoom's live spec differs from the pinned version
+	uv run python scripts/fetch_spec.py --check
 
 generate:  ## Regenerate models (from the spec) and the sync client (from _async/)
 	uv run python scripts/generate_models.py

@@ -6,6 +6,10 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- AgencyZoom's OpenAPI spec is no longer stored in the repository. `make spec` downloads it,
+  and a weekly *Spec drift* workflow detects API changes.
+
 ## [0.1.0] - 2026-10-22
 
 Initial release.
