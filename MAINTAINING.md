@@ -8,7 +8,7 @@ The working manual for whoever maintains this package: how the code is laid out,
 
 ```bash
 brew install uv                  # or: curl -LsSf https://astral.sh/uv/install.sh | sh
-git clone https://github.com/jatinyadav/agencyzoom-python-sdk && cd agencyzoom-python-sdk
+git clone https://github.com/iamjatinyadav/agencyzoom-python-sdk && cd agencyzoom-python-sdk
 uv sync                          # .venv with runtime + dev dependencies, pinned by uv.lock
 make check                       # lint + mypy --strict + tests + generated-code check
 ```
@@ -156,7 +156,7 @@ Versioning follows [SemVer](https://semver.org/):
 
 **First-time PyPI setup**, once:
 
-1. Create the project on PyPI → *Your projects* → *Publishing* → *Add a trusted publisher*. Enter owner `jatinyadav`, repository `agencyzoom-python-sdk`, workflow `release.yml`, environment `pypi`.
+1. On PyPI, go to *Account settings* → *Publishing* → *Add a new pending publisher*. Enter PyPI project name `agencyzoom-sdk`, owner `iamjatinyadav`, repository `agencyzoom-python-sdk`, workflow `release.yml`, environment `pypi`. A pending publisher creates the project on the first successful upload.
 2. In GitHub → *Settings* → *Environments*, create `pypi`. Optionally require a reviewer.
 
 Without CI, `uv build && uv publish` also works (it asks for a PyPI token).

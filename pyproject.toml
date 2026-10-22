@@ -57,10 +57,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jatinyadav/agencyzoom-python-sdk"
+Homepage = "https://github.com/iamjatinyadav/agencyzoom-python-sdk"
 "API Reference" = "https://app.agencyzoom.com/openapi/"
-Changelog = "https://github.com/jatinyadav/agencyzoom-python-sdk/blob/main/CHANGELOG.md"
-Issues = "https://github.com/jatinyadav/agencyzoom-python-sdk/issues"
+Changelog = "https://github.com/iamjatinyadav/agencyzoom-python-sdk/blob/main/CHANGELOG.md"
+Issues = "https://github.com/iamjatinyadav/agencyzoom-python-sdk/issues"
 
 [tool.hatch.version]
 path = "src/agencyzoom/_version.py"

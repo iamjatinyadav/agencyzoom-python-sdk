@@ -62,8 +62,8 @@ uv add "agencyzoom-sdk[http2]"      # or: pip install "agencyzoom-sdk[http2]"
 Straight from GitHub, before a release or to pin a commit:
 
 ```bash
-uv add "agencyzoom-sdk @ git+https://github.com/jatinyadav/agencyzoom-python-sdk"
-pip install "git+https://github.com/jatinyadav/agencyzoom-python-sdk"
+uv add "agencyzoom-sdk @ git+https://github.com/iamjatinyadav/agencyzoom-python-sdk"
+pip install "git+https://github.com/iamjatinyadav/agencyzoom-python-sdk"
 ```
 
 ### Requirements
@@ -437,7 +437,7 @@ logging.getLogger("agencyzoom").setLevel(logging.DEBUG)
 ## Contributing
 
 ```bash
-git clone https://github.com/jatinyadav/agencyzoom-python-sdk && cd agencyzoom-python-sdk
+git clone https://github.com/iamjatinyadav/agencyzoom-python-sdk && cd agencyzoom-python-sdk
 uv sync            # creates .venv with every dev tool
 make check         # lint + types + tests
 ```
