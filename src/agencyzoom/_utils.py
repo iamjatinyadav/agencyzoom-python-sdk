@@ -6,6 +6,7 @@ import copy
 import logging
 import mimetypes
 import os
+import re
 import threading
 import time
 from functools import lru_cache
@@ -19,6 +20,7 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
+    get_origin,
     overload,
 )
 
@@ -168,39 +170,96 @@ def parse_response(cast_to: Any, data: Any) -> Any:
     if cast_to is None or data is None:
         return data
     adapter = _adapter(cast_to)
-    for attempt in range(5):
+    ignored: dict[str, str] = {}  # field path -> pydantic error type, insertion-ordered
+    copied = False
+    # Each pass nulls *every* invalid field; extra passes only handle errors that
+    # surface once earlier ones are fixed (e.g. inside unions).
+    for _ in range(10):
         try:
-            return adapter.validate_python(data)
+            result = adapter.validate_python(data)
         except ValidationError as exc:
-            if attempt == 0:
+            if not copied:
                 data = copy.deepcopy(data)  # never mutate the caller's (possibly cached) payload
-            errors = exc.errors(include_url=False, include_input=False)
-            if not any(_null_out(data, err["loc"]) for err in errors):
+                copied = True
+            fixed = False
+            for err in exc.errors(include_url=False, include_input=False):
+                path = _null_out(data, err["loc"])
+                if path is not None:
+                    fixed = True
+                    ignored.setdefault(_display_path(path), err["type"])
+            if not fixed:
                 break
-            logger.warning(
-                "AgencyZoom response did not match %s; ignored invalid fields: %s",
-                getattr(cast_to, "__name__", cast_to),
-                ", ".join(".".join(map(str, e["loc"])) for e in errors[:10]),
-            )
-    logger.warning("Returning unvalidated AgencyZoom response for %s", cast_to)
+        else:
+            if ignored:
+                logger.warning(
+                    "AgencyZoom response for %s didn't match its spec; set to None: %s",
+                    _type_name(cast_to),
+                    ", ".join(f"{path} ({kind})" for path, kind in ignored.items()),
+                )
+            return result
+    logger.warning("Returning unvalidated AgencyZoom response for %s", _type_name(cast_to))
     return data
 
 
-def _null_out(data: Any, loc: tuple[int | str, ...]) -> bool:
-    """Set the deepest dict field addressed by ``loc`` to ``None``."""
-    target: Any = None
-    key: Hashable | None = None
+def invalid_fields(cast_to: Any, data: Any) -> list[tuple[str, str, str, Any]]:
+    """``(path, error_type, message, raw_value)`` for each field of ``data`` that
+    doesn't fit ``cast_to``. Used by diagnostics; doesn't modify ``data``."""
+    try:
+        _adapter(cast_to).validate_python(data)
+    except ValidationError as exc:
+        found = []
+        for err in exc.errors(include_url=False, include_input=False):
+            path, value = _locate(data, err["loc"])
+            found.append((_display_path(path), err["type"], err["msg"], value))
+        return found
+    return []
+
+
+def _locate(data: Any, loc: tuple[int | str, ...]) -> tuple[tuple[int | str, ...], Any]:
+    """Follow ``loc`` through the payload, skipping segments that aren't in it
+    (pydantic adds union-member tags like ``list[Model]`` to error locations)."""
+    path: list[int | str] = []
     node = data
     for part in loc:
-        if isinstance(node, dict) and part in node:
-            target, key, node = node, part, node[part]
-        elif isinstance(node, list) and isinstance(part, int) and 0 <= part < len(node):
+        in_dict = isinstance(node, dict) and part in node
+        in_list = isinstance(node, list) and isinstance(part, int) and 0 <= part < len(node)
+        if in_dict or in_list:
             node = node[part]
-        # Other segments (e.g. union tags) don't exist in the payload; skip them.
-    if target is None or key is None or target[key] is None:
-        return False
-    target[key] = None
-    return True
+            path.append(part)
+    return tuple(path), node
+
+
+def _null_out(data: Any, loc: tuple[int | str, ...]) -> tuple[int | str, ...] | None:
+    """Set the deepest dict field addressed by ``loc`` to ``None``; return its path."""
+    path, _ = _locate(data, loc)
+    # Walk back to the last dict key: list items themselves can't be nulled
+    # (a list[int] can't hold None), so null the field that holds the list.
+    while path and not isinstance(path[-1], str):
+        path = path[:-1]
+    if not path:
+        return None
+    _, parent = _locate(data, path[:-1])
+    key = path[-1]
+    if not isinstance(parent, dict) or parent.get(key) is None:
+        return None
+    parent[key] = None
+    return path
+
+
+def _display_path(path: tuple[int | str, ...]) -> str:
+    """``("items", 3, "dueDate")`` -> ``"items[].dueDate"`` (indices collapsed, so
+    one bad field reported across 50 list items appears once)."""
+    text = ""
+    for part in path:
+        text += "[]" if isinstance(part, int) else (f".{part}" if text else str(part))
+    return text or "<root>"
+
+
+def _type_name(tp: Any) -> str:
+    """``LeadDetail``, ``List[Note]``, ``Union[List[WrittenPolicy], WrittenPolicy]``."""
+    if get_origin(tp) is None and hasattr(tp, "__name__"):
+        return str(tp.__name__)
+    return re.sub(r"\b(?:typing|agencyzoom\.models\._generated)\.", "", str(tp))
 
 
 # --------------------------------------------------------------------------- caching

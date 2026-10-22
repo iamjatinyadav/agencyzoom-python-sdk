@@ -288,6 +288,81 @@ class TestResponses:
         with AgencyZoom("u@x.com", "pw", base_url=BASE_URL) as client:
             assert client.settings.employees() == []
 
+    def test_many_bad_fields_across_many_items_are_all_repaired(
+        self, api: respx.MockRouter, client: AgencyZoom, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Regression: a real response had 4 off-spec fields on every item.
+
+        Earlier the parser fixed one field per pass and gave up after 5 passes,
+        returning a raw dict instead of the typed model.
+        """
+        tasks = [
+            {"id": i, "status": "open", "duration": "1h", "completedBy": "Ann", "customerId": "x"}
+            for i in range(25)
+        ]
+        api.post("/v1/api/tasks/list").mock(
+            return_value=httpx.Response(200, json={"totalCount": 25, "tasks": tasks})
+        )
+        with caplog.at_level(logging.WARNING, logger="agencyzoom"):
+            result = client.tasks.search()
+        assert [t.id for t in result.tasks or []] == list(range(25))
+        assert result.tasks[0].status is None  # type: ignore[index]
+        warnings = [r.getMessage() for r in caplog.records]
+        assert len(warnings) == 1, warnings  # one concise warning, not one per field
+        for field in ("status", "duration", "completedBy", "customerId"):
+            assert warnings[0].count(f"tasks[].{field} (int_parsing)") == 1
+
+    @pytest.mark.parametrize(
+        ("endpoint", "path", "payload", "read"),
+        [
+            pytest.param(
+                "post", "/v1/api/serviceTicket/service-tickets/list",
+                {"totalCount": 1, "serviceTickets": [{"id": 1, "createdBy": "Ann Lee",
+                 "modifiedBy": "Bob Ray Jr", "dueDate": "2026-10-01",
+                 "enterStageTS": "2026-09-01 10:00:00"}]},
+                lambda c: c.service_tickets.search().service_tickets[0].due_date,
+                id="service-ticket-dates-and-names",
+            ),
+            pytest.param(
+                "post", "/v1/api/life", {"totalCount": 1, "alrLeads": [{"id": 1, "status": 4}]},
+                lambda c: c.life_health.search().alr_leads[0].status,
+                id="life-status-scalar",
+            ),
+            pytest.param(
+                "post", "/v1/api/dashboard-data/sales-data",
+                {"agents": [{"monthlyItems": 2.5, "monthlyPolicies": 1.5}]},
+                lambda c: c.dashboard.sales_data().agents[0].monthly_items,
+                id="dashboard-fractional",
+            ),
+            pytest.param(
+                "get", "/v1/api/leads/1/notes", [{"id": 1, "attr": []}, {"id": 2, "attr": {"k": 1}}],
+                lambda c: [n.attr for n in c.leads.notes.list(1)],
+                id="note-attr-empty-list",
+            ),
+            pytest.param(
+                "get", "/v1/api/customers/1/policies", [{"id": 1, "tagNames": []}],
+                lambda c: c.customers.list_policies(1)[0].tag_names,
+                id="policy-tag-list",
+            ),
+        ],
+    )  # fmt: skip
+    def test_real_world_shapes_parse_cleanly(
+        self,
+        api: respx.MockRouter,
+        client: AgencyZoom,
+        caplog: pytest.LogCaptureFixture,
+        endpoint: str,
+        path: str,
+        payload: object,
+        read: object,
+    ) -> None:
+        """Shapes observed on a live account (2026-10-22) must parse with no warnings."""
+        getattr(api, endpoint)(path).mock(return_value=httpx.Response(200, json=payload))
+        with caplog.at_level(logging.WARNING, logger="agencyzoom"):
+            value = read(client)  # type: ignore[operator]
+        assert value is not None
+        assert not caplog.records, [r.getMessage() for r in caplog.records]
+
     def test_retry_after_is_capped(
         self, api: respx.MockRouter, client: AgencyZoom, delays: list[float]
     ) -> None:

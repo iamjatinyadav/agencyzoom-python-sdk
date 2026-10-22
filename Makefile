@@ -1,7 +1,7 @@
 # Every target uses uv (https://docs.astral.sh/uv/). `make help` lists them.
 PYTHONS ?= 3.8 3.9 3.10 3.11 3.12 3.13 3.14
 
-.PHONY: help install spec spec-update spec-check generate lint format typecheck test test-all check build clean
+.PHONY: help install spec spec-update spec-check smoke generate lint format typecheck test test-all check build clean
 
 help:  ## Show available targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -17,6 +17,9 @@ spec-update:  ## Download the spec and pin the new version (after AgencyZoom cha
 
 spec-check:  ## Exit 1 if AgencyZoom's live spec differs from the pinned version
 	uv run python scripts/fetch_spec.py --check
+
+smoke:  ## Read-only test against a REAL AgencyZoom account (prompts for login)
+	uv run python scripts/smoke_test.py $(ARGS)
 
 generate:  ## Regenerate models (from the spec) and the sync client (from _async/)
 	uv run python scripts/generate_models.py

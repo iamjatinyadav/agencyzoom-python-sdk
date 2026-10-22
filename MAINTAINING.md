@@ -107,7 +107,10 @@ Users can move without a release: `api_version="v2"`, `api_root=...`, or `endpoi
 
 AgencyZoom sometimes returns data that contradicts its spec. The SDK already copes by setting the field to `None` and logging a warning, but if a field is *consistently* different, fix it at the source:
 
-- Prefer fixing the generator, e.g. a mapping of schema field → corrected type in `scripts/generate_models.py`, so the fix survives regeneration.
+- Run `make smoke ARGS=--diagnose` against a real account. It prints each off-spec field with a masked shape of what was actually received (e.g. `str "9999-99-99"`), never real values.
+- Add an entry to `FIELD_TYPE_OVERRIDES` in `scripts/generate_models.py` with the corrected annotation and a short note (shown in the field's docstring as "In practice: …"), then run `make generate`. Overrides survive spec downloads. The generator **fails** if an override no longer matches the spec, so a renamed field can't silently lose its fix.
+- Add the observed shape to `test_real_world_shapes_parse_cleanly` in `tests/test_edge_cases.py`.
+- Only override what you've actually observed. Don't "fix" similar-looking fields on a guess.
 - Don't patch `openapi/agencyzoom.yaml`: it isn't committed, so a patch would be lost on the next download.
 
 ### 3.5 Updating dependencies
@@ -138,10 +141,10 @@ make test-all
 **Smoke-testing against the real API** before a release:
 
 ```bash
-AGENCYZOOM_USERNAME=... AGENCYZOOM_PASSWORD=... uv run python examples/quickstart.py
+make smoke        # = uv run python scripts/smoke_test.py; prompts for email and password
 ```
 
-Use a sandbox or test agency, because the quickstart writes a note to a lead.
+It is **read-only** (searches and gets only), runs about 48 checks across every API group, and prints counts and field names only, so its output is safe to share. Exit code 0 means every call worked and every response matched the models. Any "Model mismatch warnings" point at fields to fix in the generator (§3.4) before releasing.
 
 ---
 

@@ -42,6 +42,26 @@ RESERVED = {
     "schema", "schema_json", "update_forward_refs", "validate", "to_api",
 }  # fmt: skip
 
+# Fields whose *real* responses contradict the spec: (schema, property) ->
+# (Python annotation, note appended to the field docstring). Only add entries
+# that were observed on a live account (`make smoke ARGS=--diagnose`); the
+# lenient parser already copes with one-off oddities.
+FIELD_TYPE_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
+    # Verified 2026-10-22 against a live agency account.
+    ("SalesProgress", "monthlyItems"): ("float", "Can be fractional (e.g. 2.5)."),
+    ("SalesProgress", "monthlyPolicies"): ("float", "Can be fractional (e.g. 2.5)."),
+    ("AlrapptsSummary", "status"): ("Union[int, List[int]]", "Returned as a single integer."),
+    ("Note", "attr"): ("Union[Dict[str, Any], List[Any]]", "Returned as [] when empty."),
+    ("WrittenPolicy", "tagNames"): ("Union[str, List[str]]", "Returned as a list of tag names."),
+    ("ServiceTicketDetail", "createdBy"): ("str", "Returned as the user's display name."),
+    ("ServiceTicketDetail", "modifiedBy"): ("str", "Returned as the user's display name."),
+    ("ServiceTicketDetail", "dueDate"): ("str", 'Returned as a date string, "YYYY-MM-DD".'),
+    ("ServiceTicketDetail", "enterStageTS"): (
+        "str",
+        'Returned as a datetime string, "YYYY-MM-DD HH:MM:SS".',
+    ),
+}
+
 # Inline response schemas in `paths` that deserve a named model.
 SYNTHETIC_SCHEMAS = {
     "Pipeline": ("/v1/api/pipelines", "get", ("items",)),
@@ -120,6 +140,7 @@ class Generator:
                 node = node[key]
             self.schemas[name] = node
         self.models: dict[str, Model] = {}
+        self.used_overrides: set[tuple[str, str]] = set()
         self.response_schemas = self._reachable_from_responses()
 
     # ---------------------------------------------------------------- analysis
@@ -245,7 +266,17 @@ class Generator:
             ann = self.annotation(prop_schema, model, f"{name}{class_name(alias)}")
             is_required = alias in required
             doc = one_line(prop_schema.get("description"))
-            if "example" in prop_schema and not isinstance(prop_schema["example"], (dict, list)):
+            override = FIELD_TYPE_OVERRIDES.get((name, alias))
+            if override is not None:
+                ann, note = override
+                lead = f"{doc.rstrip('.')}. " if doc else ""
+                doc = f"{lead}In practice: {note[0].lower()}{note[1:]}"
+                self.used_overrides.add((name, alias))
+            if (
+                override is None  # the spec's example would contradict the corrected type
+                and "example" in prop_schema
+                and not isinstance(prop_schema["example"], (dict, list))
+            ):
                 doc = f"{doc} Example: ``{prop_schema['example']}``.".strip()
             model.fields.append(
                 Field(
@@ -328,7 +359,11 @@ def main() -> None:
             "proprietary file); download it first with:  make spec"
         )
     spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
-    source = Generator(spec).generate()
+    generator = Generator(spec)
+    source = generator.generate()
+    stale = set(FIELD_TYPE_OVERRIDES) - generator.used_overrides
+    if stale:  # the spec renamed/removed a field we override: review, don't silently drop
+        sys.exit(f"FIELD_TYPE_OVERRIDES entries no longer match the spec: {sorted(stale)}")
     OUTPUT.write_text(source, encoding="utf-8")
     subprocess.run([sys.executable, "-m", "ruff", "format", "--quiet", str(OUTPUT)], check=False)
     subprocess.run(

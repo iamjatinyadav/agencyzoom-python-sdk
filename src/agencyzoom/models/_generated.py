@@ -2597,8 +2597,8 @@ class Note(AgencyZoomModel):
     """Note title"""
     body: Optional[str] = None
     """Note body"""
-    attr: Optional[Dict[str, Any]] = None
-    """Note attr"""
+    attr: Optional[Union[Dict[str, Any], List[Any]]] = None
+    """Note attr. In practice: returned as [] when empty."""
 
 
 class Opportunities(AgencyZoomModel):
@@ -3433,8 +3433,8 @@ class WrittenPolicy(AgencyZoomModel):
     """Date when the policy coverage becomes effective. Example: ``2019-01-01``."""
     expiry_date: Optional[str] = Field(default=None, alias="expiryDate")
     """Date when the policy coverage expires. Example: ``2020-01-01``."""
-    tag_names: Optional[str] = Field(default=None, alias="tagNames")
-    """Comma-separated list of tags associated with the policy."""
+    tag_names: Optional[Union[str, List[str]]] = Field(default=None, alias="tagNames")
+    """Comma-separated list of tags associated with the policy. In practice: returned as a list of tag names."""
     external_system: Optional[str] = Field(default=None, alias="externalSystem")
     """External System"""
     external_id: Optional[str] = Field(default=None, alias="externalId")
@@ -3499,10 +3499,10 @@ class SalesProgress(AgencyZoomModel):
     """The sales in the past month"""
     monthly_premium: OptInt = Field(default=None, alias="monthlyPremium")
     """The monthly premium for the producer or agency"""
-    monthly_items: OptInt = Field(default=None, alias="monthlyItems")
-    """The monthly items for the producer or agency"""
-    monthly_policies: OptInt = Field(default=None, alias="monthlyPolicies")
-    """The monthly policies for the producer or agency"""
+    monthly_items: OptFloat = Field(default=None, alias="monthlyItems")
+    """The monthly items for the producer or agency. In practice: can be fractional (e.g. 2.5)."""
+    monthly_policies: OptFloat = Field(default=None, alias="monthlyPolicies")
+    """The monthly policies for the producer or agency. In practice: can be fractional (e.g. 2.5)."""
     monthly_points: OptInt = Field(default=None, alias="monthlyPoints")
     """The monthly points for the producer or agency"""
     monthly_auto: OptInt = Field(default=None, alias="monthlyAuto")
@@ -3881,8 +3881,8 @@ class AlrapptsSummary(AgencyZoomModel):
     """The assignee's id Example: ``1``."""
     location: Optional[str] = None
     """The location name Example: ``Location``."""
-    status: Optional[List[int]] = None
-    """List of status: 0 - new, 1 - sold, 2 - cancel, 3 - no deal, 4 - follow up, 5 - no show, 6 - not issued, 7 - submitted, 8 - quoted, 100 - kept"""
+    status: Optional[Union[int, List[int]]] = None
+    """List of status: 0 - new, 1 - sold, 2 - cancel, 3 - no deal, 4 - follow up, 5 - no show, 6 - not issued, 7 - submitted, 8 - quoted, 100 - kept. In practice: returned as a single integer."""
     create_date: Optional[str] = Field(default=None, alias="createDate")
     """The creation date Example: ``2019-04-12 02:58:34``."""
     sold_date: Optional[str] = Field(default=None, alias="soldDate")
@@ -4053,18 +4053,18 @@ class ServiceTicketDetail(AgencyZoomModel):
     """The status description of service ticket Example: ``Open, Deleted, Completed``."""
     csr: OptInt = None
     """The id of CSR"""
-    enter_stage_ts: OptInt = Field(default=None, alias="enterStageTS")
-    """The timestamp when enter a stage Example: ``1727158695``."""
+    enter_stage_ts: Optional[str] = Field(default=None, alias="enterStageTS")
+    """The timestamp when enter a stage. In practice: returned as a datetime string, "YYYY-MM-DD HH:MM:SS"."""
     enrolled: OptInt = None
     """Whether enroll automation"""
     create_date: Optional[str] = Field(default=None, alias="createDate")
     """The create date of this ticket Example: ``2021-08-01``."""
-    created_by: OptInt = Field(default=None, alias="createdBy")
-    """The id of agent"""
+    created_by: Optional[str] = Field(default=None, alias="createdBy")
+    """The id of agent. In practice: returned as the user's display name."""
     modify_date: Optional[str] = Field(default=None, alias="modifyDate")
     """Modify date of this ticket Example: ``2021-08-01 23:23:23``."""
-    modified_by: OptInt = Field(default=None, alias="modifiedBy")
-    """The id of agent"""
+    modified_by: Optional[str] = Field(default=None, alias="modifiedBy")
+    """The id of agent. In practice: returned as the user's display name."""
     category_id: OptInt = Field(default=None, alias="categoryId")
     """Service ticket category Example: ``0 = all;``."""
     priority_id: OptInt = Field(default=None, alias="priorityId")
@@ -4073,8 +4073,8 @@ class ServiceTicketDetail(AgencyZoomModel):
     """The subject of this ticket"""
     service_desc: Optional[str] = Field(default=None, alias="serviceDesc")
     """The description of this ticket"""
-    due_date: OptInt = Field(default=None, alias="dueDate")
-    """Due date"""
+    due_date: Optional[str] = Field(default=None, alias="dueDate")
+    """Due date. In practice: returned as a date string, "YYYY-MM-DD"."""
     complete_date: Optional[str] = Field(default=None, alias="completeDate")
     """Complete date"""
     resolution_id: OptInt = Field(default=None, alias="resolutionId")

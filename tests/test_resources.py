@@ -171,7 +171,7 @@ def test_malformed_response_fields_are_tolerated(
     assert (task.id, task.title) == (1, "Call")
     assert task.status is None  # "" -> None
     assert task.customer_id is None  # invalid -> None, with a warning
-    assert "did not match" in caplog.text
+    assert "customerId (int_parsing)" in caplog.text
 
 
 def test_batch_delete_tasks(api: respx.MockRouter, client: AgencyZoom) -> None:
