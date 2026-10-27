@@ -30,6 +30,7 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "AGENCYZOOM_TOKEN",
         "AGENCYZOOM_API_TOKEN",
         "AGENCYZOOM_BASE_URL",
+        "AGENCYZOOM_API_VERSION",
     ):
         monkeypatch.delenv(name, raising=False)
 

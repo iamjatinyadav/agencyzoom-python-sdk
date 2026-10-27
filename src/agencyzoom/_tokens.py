@@ -6,7 +6,7 @@ import base64
 import json
 import math
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ._exceptions import APIResponseError
@@ -33,15 +33,15 @@ def _finite_float(value: Any) -> float | None:
         return None
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     return number if math.isfinite(number) else None
 
 
 @dataclass(frozen=True)
 class TokenState:
-    access_token: str
-    refresh_token: str | None = None
+    access_token: str = field(repr=False)
+    refresh_token: str | None = field(default=None, repr=False)
     expires_at: float | None = None
     """Unix timestamp; ``None`` when unknown (the token is then used until a 401)."""
 

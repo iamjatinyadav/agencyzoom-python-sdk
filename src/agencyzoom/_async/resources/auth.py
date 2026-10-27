@@ -6,10 +6,9 @@ own. They're exposed for explicit session control and SSO flows.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeVar
 
 from ..._exceptions import ConfigurationError
-from ..._tokens import TokenState
 from ..._utils import build_body, parse_response
 from ...models import (
     GenericSuccessResponse,
@@ -24,6 +23,8 @@ from .._resource import AsyncAPIResource
 
 __all__ = ["AsyncAuth", "AsyncV4SSO"]
 
+T = TypeVar("T")
+
 
 class AsyncAuth(AsyncAPIResource):
     """Explicit session management. Successful calls update the client's token."""
@@ -37,8 +38,10 @@ class AsyncAuth(AsyncAPIResource):
     ) -> LoginResponse:
         """Log in (defaults to the client's credentials). ``POST /auth/login``"""
         payload = self._credentials(username, password, version)
-        raw = await self._call("auth.login", body=payload, authenticated=False)
-        return self._store_session(raw)
+        raw = await self._http.auth.authenticate(
+            "auth.login", payload, credentials=(payload["username"], payload["password"])
+        )
+        return self._parse(LoginResponse, raw)
 
     async def sso_login(
         self,
@@ -49,39 +52,36 @@ class AsyncAuth(AsyncAPIResource):
     ) -> LoginResponse:
         """Log in through V4 SSO. ``POST /auth/ssologin``"""
         payload = self._credentials(username, password, version)
-        raw = await self._call("auth.sso_login", body=payload, authenticated=False)
-        return self._store_session(raw)
+        raw = await self._http.auth.authenticate(
+            "auth.sso_login", payload, credentials=(payload["username"], payload["password"])
+        )
+        return self._parse(LoginResponse, raw)
 
     async def refresh(self, refresh_token: str | None = None) -> RefreshTokenResponse:
         """Exchange a refresh token for a new access token. ``POST /auth/refresh``"""
-        current = self._http.auth.state
-        token = refresh_token or (current.refresh_token if current else None)
-        if not token:
-            raise ConfigurationError("No refresh token available; log in with version=2 first.")
-        raw = await self._call("auth.refresh", body={"refreshToken": token}, authenticated=False)
-        self._http.auth.set_state(TokenState.from_auth_response(raw, previous=current))
-        return parse_response(RefreshTokenResponse, raw)
+        raw = await self._http.auth.refresh(refresh_token)
+        return self._parse(RefreshTokenResponse, raw)
 
     async def logout(self) -> GenericSuccessResponse:
         """Invalidate the current session. ``POST /auth/logout``"""
-        result = await self._call("auth.logout", cast_to=GenericSuccessResponse)
-        self._http.auth.set_state(None)
-        return result
+        raw = await self._http.auth.logout()
+        return self._parse(GenericSuccessResponse, raw)
 
     def _credentials(
         self, username: str | None, password: str | None, version: int
     ) -> dict[str, Any]:
-        options = self._http.options
+        if (username is None) != (password is None):
+            raise ConfigurationError("username and password must be provided together")
+        active_username, active_password = self._http.auth.credentials
         fields = {
-            "username": username or options.username,
-            "password": password or options.password,
+            "username": username if username is not None else active_username,
+            "password": password if password is not None else active_password,
             "version": version,
         }
         return build_body(LoginRequest, None, fields)
 
-    def _store_session(self, raw: Any) -> LoginResponse:
-        self._http.auth.set_state(TokenState.from_auth_response(raw))
-        return parse_response(LoginResponse, raw)
+    def _parse(self, model: type[T], raw: Any) -> T:
+        return parse_response(model, raw, strict=self._http.options.strict_response_validation)
 
 
 class AsyncV4SSO(AsyncAPIResource):
@@ -99,6 +99,7 @@ class AsyncV4SSO(AsyncAPIResource):
         if version is not None:
             fields["version"] = version
         payload = build_body(V4ssoLoginRequest, None, fields)
-        raw = await self._call("v4sso.login", body=payload, authenticated=False)
-        self._http.auth.set_state(TokenState.from_auth_response(raw))
-        return parse_response(LoginResponse, raw)
+        raw = await self._http.auth.authenticate("v4sso.login", payload)
+        return parse_response(
+            LoginResponse, raw, strict=self._http.options.strict_response_validation
+        )

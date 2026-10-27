@@ -6,12 +6,19 @@ import threading
 import time
 from typing import Any, Callable, TypeVar
 
-__all__ = ["Lock", "run_blocking", "sleep"]
+__all__ = ["Lock", "LoopGuard", "run_blocking", "sleep"]
 
 T = TypeVar("T")
 
 Lock = threading.Lock
 sleep = time.sleep
+
+
+class LoopGuard:
+    """No event-loop affinity is required by the blocking transport."""
+
+    def check(self) -> None:
+        pass
 
 
 def run_blocking(func: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:

@@ -3,12 +3,25 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, model_validator
 from typing_extensions import Annotated
 
 __all__ = ["AgencyZoomModel", "OptBool", "OptFloat", "OptInt"]
+
+_SECRET_NAMES = frozenset(
+    {
+        "password",
+        "oldpassword",
+        "newpassword",
+        "jwt",
+        "token",
+        "accesstoken",
+        "refreshtoken",
+        "apitoken",
+    }
+)
 
 
 class AgencyZoomModel(BaseModel):
@@ -28,6 +41,7 @@ class AgencyZoomModel(BaseModel):
         protected_namespaces=(),
         use_enum_values=True,
         coerce_numbers_to_str=True,
+        hide_input_in_errors=True,
         # Validators are built on first use, keeping `import agencyzoom` fast even
         # though the API has 230+ schemas.
         defer_build=True,
@@ -43,6 +57,14 @@ class AgencyZoomModel(BaseModel):
     def to_api(self) -> dict[str, Any]:
         """Serialise to the JSON payload AgencyZoom expects (camelCase, unset fields omitted)."""
         return self.model_dump(mode="json", by_alias=True, exclude_unset=True)
+
+    def __repr_args__(self) -> Iterator[tuple[str | None, Any]]:
+        # Upstream may return a supported token alias as an extra field rather
+        # than the spec's declared `jwt`. Field(repr=False) cannot hide extras.
+        for name, value in super().__repr_args__():
+            if isinstance(name, str) and name.replace("_", "").lower() in _SECRET_NAMES:
+                continue
+            yield name, value
 
     def __getitem__(self, key: str) -> Any:
         """Dict-style access by API (camelCase) or Python (snake_case) name."""

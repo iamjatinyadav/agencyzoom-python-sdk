@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Iterator, List, Mapping, TypeVar, overload
 
+from .._exceptions import APIResponseError
 from .._utils import PreparedFile, parse_response
 from ._http import HTTPClient
 
@@ -98,37 +99,61 @@ class APIResource:
     ) -> Iterator[T]:
         """Yield every item of a paged ``POST`` search, fetching pages lazily.
 
-        Stops when ``totalCount`` items have been seen, a page comes back short or
-        empty, or the server returns the same page twice (i.e. ignores ``page``).
+        Stops at ``totalCount``, or a short/empty page when no total is supplied.
+        Malformed, repeated or prematurely empty pages and exhaustion of the page
+        limit raise ``APIResponseError`` so incomplete exports cannot pass silently.
         """
-        body = {**body, "pageSize": body.get("pageSize") or page_size}
-        size = int(body["pageSize"])
-        page = int(body.get("page") or 0)
-        seen = 0
+        size = body.get("pageSize") if body.get("pageSize") is not None else page_size
+        page = body.get("page") if body.get("page") is not None else 0
+        if type(size) is not int or size <= 0 or type(page) is not int or page < 0:
+            raise ValueError(
+                "pageSize must be a positive integer and page must be a non-negative integer"
+            )
+        body = {**body, "pageSize": size}
+        seen = page * size
         previous: list[Any] | None = None
         for _ in range(MAX_PAGES):
             payload = self._http.call(endpoint_id, json={**body, "page": page})
             if not isinstance(payload, dict):
-                return
-            raw_items = payload.get(items_key) or []
-            if not isinstance(raw_items, list) or not raw_items:
+                raise APIResponseError(f"{endpoint_id}: expected a pagination object", body=payload)
+            raw_items = payload.get(items_key)
+            if not isinstance(raw_items, list) or any(
+                not isinstance(item, dict) for item in raw_items
+            ):
+                raise APIResponseError(
+                    f"{endpoint_id}: expected a list of objects in {items_key}", body=payload
+                )
+            total = _as_int(payload.get("totalCount"))
+            if payload.get("totalCount") is not None and (total is None or total < 0):
+                raise APIResponseError(f"{endpoint_id}: invalid totalCount", body=payload)
+            if not raw_items:
+                if total is not None and seen < total:
+                    raise APIResponseError(
+                        f"{endpoint_id}: empty page before totalCount was reached", body=payload
+                    )
                 return
             if raw_items == previous:
-                logger.warning("%s returned the same page twice; stopping pagination", endpoint_id)
-                return
+                raise APIResponseError(f"{endpoint_id}: returned the same page twice", body=payload)
             previous = raw_items
-            items: list[T] = parse_response(List[item_type], raw_items)  # type: ignore[valid-type]
+            item_list_type = List[item_type]  # type: ignore[valid-type]
+            items: list[T] = parse_response(
+                item_list_type,
+                raw_items,
+                strict=self._http.options.strict_response_validation,
+            )
             for item in items:
                 yield item
             seen += len(items)
-            total = _as_int(payload.get("totalCount"))
-            if len(items) < size or (total is not None and seen >= total):
+            if (total is None and len(items) < size) or (total is not None and seen >= total):
                 return
             page += 1
+        raise APIResponseError(
+            f"{endpoint_id}: pagination exceeded the safety limit of {MAX_PAGES} pages"
+        )
 
 
 def _as_int(value: Any) -> int | None:
-    if isinstance(value, bool):
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
         return None
     try:
         return int(value)

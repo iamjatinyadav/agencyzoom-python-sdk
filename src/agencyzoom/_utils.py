@@ -26,6 +26,8 @@ from typing import (
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from ._exceptions import APIResponseError
+
 __all__ = [
     "FileInput",
     "TTLCache",
@@ -156,10 +158,10 @@ def _adapter(tp: Any) -> TypeAdapter[Any]:
 
 
 @overload
-def parse_response(cast_to: type[T], data: Any) -> T: ...
+def parse_response(cast_to: type[T], data: Any, *, strict: bool = False) -> T: ...
 @overload
-def parse_response(cast_to: object, data: Any) -> Any: ...
-def parse_response(cast_to: Any, data: Any) -> Any:
+def parse_response(cast_to: object, data: Any, *, strict: bool = False) -> Any: ...
+def parse_response(cast_to: Any, data: Any, *, strict: bool = False) -> Any:
     """Validate ``data`` into ``cast_to`` (a model, ``List[Model]``, or any type).
 
     AgencyZoom's payloads don't always match its own spec. Rather than failing a
@@ -170,6 +172,7 @@ def parse_response(cast_to: Any, data: Any) -> Any:
     if cast_to is None or data is None:
         return data
     adapter = _adapter(cast_to)
+    original = data
     ignored: dict[str, str] = {}  # field path -> pydantic error type, insertion-ordered
     copied = False
     # Each pass nulls *every* invalid field; extra passes only handle errors that
@@ -178,6 +181,10 @@ def parse_response(cast_to: Any, data: Any) -> Any:
         try:
             result = adapter.validate_python(data)
         except ValidationError as exc:
+            if strict:
+                raise APIResponseError(
+                    f"AgencyZoom response did not match {_type_name(cast_to)}", body=original
+                ) from None
             if not copied:
                 data = copy.deepcopy(data)  # never mutate the caller's (possibly cached) payload
                 copied = True
@@ -198,7 +205,7 @@ def parse_response(cast_to: Any, data: Any) -> Any:
                 )
             return result
     logger.warning("Returning unvalidated AgencyZoom response for %s", _type_name(cast_to))
-    return data
+    return original
 
 
 def invalid_fields(cast_to: Any, data: Any) -> list[tuple[str, str, str, Any]]:

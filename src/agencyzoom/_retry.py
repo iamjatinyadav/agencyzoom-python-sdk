@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 import time
 from email.utils import parsedate_to_datetime
@@ -32,14 +33,18 @@ def parse_retry_after(response: httpx.Response | None) -> float | None:
     if not value:
         return None
     try:
-        return max(0.0, float(value))
+        seconds = float(value)
+        return max(0.0, seconds) if math.isfinite(seconds) else None
     except ValueError:
         pass
     try:
         retry_at = parsedate_to_datetime(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError, OSError):
         return None
-    return max(0.0, retry_at.timestamp() - time.time())
+    try:
+        return max(0.0, retry_at.timestamp() - time.time())
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 def compute_backoff(
@@ -54,5 +59,8 @@ def compute_backoff(
         retry_after = parse_retry_after(response)
         if retry_after is not None:
             return min(retry_after, config.max_backoff)
-    ceiling = min(config.max_backoff, config.backoff_factor * (2**attempt))
+    try:
+        ceiling = min(config.max_backoff, math.ldexp(config.backoff_factor, attempt))
+    except OverflowError:
+        ceiling = config.max_backoff
     return random.uniform(ceiling / 2, ceiling)

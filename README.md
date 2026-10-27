@@ -71,6 +71,11 @@ pip install "git+https://github.com/iamjatinyadav/agencyzoom-python-sdk"
 - Python **3.8+** (tested on 3.8 through 3.14)
 - Dependencies, installed automatically: `httpx`, `pydantic` v2, `typing-extensions`
 
+Python 3.8/3.9 support is retained for existing applications. Their compatible AnyIO
+versions have two accepted upstream advisories; see [the security policy](SECURITY.md)
+for the affected versions, SDK exposure assessment and CI exceptions. Python 3.10+
+with current dependencies is recommended for new deployments.
+
 Check the install:
 
 ```bash
@@ -78,6 +83,31 @@ python -c "import agencyzoom; print(agencyzoom.__version__)"
 ```
 
 ---
+
+### Migrating from 0.1.0
+
+The next release includes these deliberate compatibility changes:
+
+| Change | Migration |
+| --- | --- |
+| Path IDs must be non-negative integers or digit strings | Validate IDs before calling resource methods. Arbitrary strings, dot segments, negative values, floats and booleans raise `ValueError`. |
+| Invalid or incomplete pagination raises `APIResponseError` | Let the error fail the export or handle it explicitly. Previously yielded records may be partial; only mark an export complete after iteration finishes successfully. |
+| Each async client and its copies belong to one event loop | Create and close the client inside the coroutine passed to each `asyncio.run()`. Reuse it across tasks in that same loop. |
+
+Cross-loop reuse previously passed mocked tests but could fail with real pooled connections.
+It now raises `AgencyZoomError` before accessing those connections. Python 3.8/3.9 support
+is retained; the event-loop restriction applies to every supported Python version.
+
+```python
+import asyncio
+from agencyzoom import AsyncAgencyZoom
+
+async def fetch_employees():
+    async with AsyncAgencyZoom() as client:
+        return await client.settings.employees()
+
+employees = asyncio.run(fetch_employees())
+```
 
 ## Quick start
 
@@ -215,6 +245,11 @@ client.clear_cache()
 ```
 
 Only `client.settings.*` and `client.pipelines.*` are cached, and only when `cache_ttl` is set.
+Cache entries are isolated by API host, path, request headers and authentication context.
+Routine token refresh preserves cached data until its TTL expires. Explicit login, logout,
+switching accounts or refresh tokens, a rejected bearer token, and a fresh automatic login
+invalidate previously cached responses. Reads after `close()` raise an error, including reads
+that would otherwise hit the cache.
 
 ---
 
@@ -232,7 +267,8 @@ first_250 = list(itertools.islice(client.leads.paginate(status=1), 250))   # sto
 
 - Uses the largest page size each endpoint allows (leads 100, tasks 200, life 500...), so it makes fewer calls under the rate limit. You can override it with `page_size=`.
 - Starts from `page=` if you give one.
-- Stops at `totalCount`, on a short or empty page, or when the server returns the **same page twice** (some servers ignore the page parameter). This guards against infinite loops.
+- Stops at `totalCount`, or on a short or empty page when no total is supplied.
+- Raises `APIResponseError` on a malformed, repeated or prematurely empty page, or when the page safety limit is reached. Treat the export as incomplete even if some records have already been yielded.
 
 Paginated endpoints: `leads`, `customers`, `tasks`, `service_tickets`, `life_health`.
 
@@ -279,6 +315,10 @@ client.with_options(timeout=120, max_retries=0).leads.batch_create(...)
 beta = client.with_options(api_version="v2", default_headers={"X-Beta": "1"})
 ```
 
+Each copy uses its own configured routes for login and refresh. Session changes are shared,
+and closing either client closes all copies. Change `base_url` only to an API host you trust:
+copies intentionally share credentials and the authenticated session.
+
 **Endpoints the SDK doesn't have yet.** `client.request` goes through the same auth, retry and rate-limit pipeline:
 
 ```python
@@ -304,10 +344,19 @@ client = AgencyZoom(
     cache_ttl=600,                    # cache reference data; default off
     default_headers={"X-Request-Source": "nightly-sync"},
     http2=True,                       # needs the [http2] extra
+    strict_response_validation=True, # raise APIResponseError on model mismatches; default False
 )
 ```
 
 **Proxies, custom TLS, event hooks.** Pass your own `httpx.Client` (sync) or `httpx.AsyncClient` (async) as `http_client=`. The SDK won't close it. The standard `HTTPS_PROXY`/`HTTP_PROXY` environment variables are honoured by default.
+
+Use each async client and all its copies within one event loop, and close them in that loop.
+For separate `asyncio.run()` calls, create and close a client inside each call. Reusing a client
+from another loop raises `AgencyZoomError` before accessing its cache or connections.
+
+Redirects raise `APIStatusError`, including when a supplied HTTP client enables redirects.
+Configure the final API URL explicitly; login bodies and custom API-token headers must not
+be forwarded to a redirect destination.
 
 **Sharing one rate budget.** AgencyZoom's limit is per account. Use `with_options()` copies rather than several separate clients, so they share one limiter.
 
@@ -361,26 +410,27 @@ Two other exceptions are raised before any request is sent: `pydantic.Validation
 
 | Situation | What happens |
 | --- | --- |
-| Response field has the wrong type (`"abc"` for a number) | Field becomes `None`, a warning is logged, and the rest of the response is kept |
+| Response field has the wrong type (`"abc"` for a number) | By default, field becomes `None` with a warning; `strict_response_validation=True` raises `APIResponseError` with the original body |
 | `""` returned for a number or boolean | Treated as `None` |
-| Response shape doesn't match the spec at all | The raw JSON is returned, with a warning |
+| Response shape doesn't match the spec at all | The original, unmodified JSON is returned with a warning; strict validation raises `APIResponseError` |
 | `200` with HTML or other non-JSON body | `APIResponseError` (includes a snippet of the body) |
 | Empty body or `204` | Returns `None` |
 | Error page that isn't JSON (proxy `502` HTML) | `InternalServerError` with the text as its message |
 | ID is `None`, `True`, or blank | `ValueError` before any request is sent |
-| ID contains `/`, spaces, etc. | URL-encoded |
+| Path ID is negative, fractional, a dot segment, or nonnumeric | `ValueError` before any request is sent; non-negative integers and digit strings are accepted |
 | Login succeeds but returns no token | `APIResponseError` with the server's message |
 | `expiresIn` missing, garbage, or negative | Falls back to the JWT's `exp` claim, then to "valid until a 401" |
 | Huge `Retry-After` | Capped at `RetryConfig.max_backoff` |
-| Redirects | Followed (credentials are dropped on cross-host redirects) |
-| Server ignores the `page` parameter | Pagination stops after the repeated page, with a warning |
+| Redirects | Rejected with `APIStatusError`; no follow-up request is sent |
+| Server ignores the `page` parameter | `APIResponseError` on the repeated page; the export is incomplete |
+| Pagination envelope or item list is malformed, or the page safety limit is reached | `APIResponseError`; a malformed response is not treated as an empty export |
 | `totalCount` sent as a string | Understood |
 | Using a client after `close()` | `AgencyZoomError("...has been closed...")` |
 | Many threads or tasks hitting an expired token | One refresh. Everyone else waits for it |
-| Async client reused across `asyncio.run()` calls | Supported (internal locks bind to the current event loop) |
+| Async client reused across `asyncio.run()` calls | `AgencyZoomError`; create and close a client in each event loop |
 | Text-mode file handle uploaded | Encoded as UTF-8 |
 | Blank env vars or blank arguments | Treated as unset |
-| Secrets in `repr()` or logs | Never shown (`Authorization` and `X-Api-Token` are redacted) |
+| Passwords and tokens in model `repr()` / `str()` | Known credential fields are hidden; built-in header logging redacts `Authorization`, `X-Api-Token` and cookies |
 
 ---
 
@@ -424,7 +474,10 @@ The SDK logs to the `agencyzoom` logger:
 - `INFO`: retries
 - `WARNING`: responses that didn't match the spec
 
-Credentials and tokens are never logged.
+Built-in request-header logging redacts known credential headers. Authentication model representations
+hide password and token fields, and validation error text omits input values. Explicit model dumps,
+exception response bodies, custom headers and HTTPX hooks can still contain sensitive data; handle
+them accordingly in application logging.
 
 ```python
 import logging

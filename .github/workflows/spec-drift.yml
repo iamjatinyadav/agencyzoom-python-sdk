@@ -29,5 +29,5 @@ jobs:
         run: |
           uv run python scripts/generate_models.py
           git diff --exit-code -- src/agencyzoom/models/_generated.py
-      - name: Endpoint registry matches the spec
-        run: uv run pytest tests/test_endpoint_coverage.py -v
+      - name: Endpoint registry and public wire contracts match the spec
+        run: uv run pytest tests/test_endpoint_coverage.py tests/test_contracts.py -v
