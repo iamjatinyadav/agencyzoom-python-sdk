@@ -6,6 +6,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-27
+
 ### Fixed
 - Reject all HTTP redirects, including with injected clients, to prevent forwarding login bodies
   and custom API-token headers.
