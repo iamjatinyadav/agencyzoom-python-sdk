@@ -1,0 +1,56 @@
+name: Dependency security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "37 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Runtime dependencies on Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --python ${{ matrix.python }} --no-default-groups
+      - name: Collect the actual installed runtime versions
+        run: uv pip freeze --python .venv/bin/python --exclude-editable > runtime-requirements.txt
+      - name: Record the complete unfiltered advisory report
+        # The enforcement step below decides which findings block the job.
+        # A collection/network error still fails that step; it is not waived.
+        continue-on-error: true
+        run: uvx --python 3.13 --from pip-audit==2.10.1 pip-audit --disable-pip --no-deps --strict --format json --output audit.json -r runtime-requirements.txt
+      - name: Enforce the documented dependency policy
+        env:
+          AUDIT_PYTHON_VERSION: ${{ matrix.python }}
+        shell: bash
+        run: |
+          exceptions=()
+          case "$AUDIT_PYTHON_VERSION" in
+            3.8|3.9)
+              # See SECURITY.md: accepted legacy AnyIO advisories only.
+              exceptions=(--ignore-vuln PYSEC-2026-4025 --ignore-vuln PYSEC-2026-4024)
+              echo "::warning::Python $AUDIT_PYTHON_VERSION retains two documented AnyIO advisories. Review the unfiltered audit artifact and SECURITY.md."
+              ;;
+          esac
+          uvx --python 3.13 --from pip-audit==2.10.1 pip-audit --disable-pip --no-deps --strict "${exceptions[@]}" -r runtime-requirements.txt
+      - name: Preserve the unfiltered findings and audited versions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-python-${{ matrix.python }}
+          path: |
+            audit.json
+            runtime-requirements.txt

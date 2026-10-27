@@ -108,13 +108,13 @@ def _install_diagnostics() -> dict:
 
     seen: dict = collections.defaultdict(lambda: {"error": "", "shapes": collections.Counter()})
 
-    def recording_parse(cast_to: Any, data: Any) -> Any:
+    def recording_parse(cast_to: Any, data: Any, *, strict: bool = False) -> Any:
         if cast_to is not None and data is not None:
             for path, kind, message, value in invalid_fields(cast_to, data):
                 entry = seen[(_type_label(cast_to), path)]
                 entry["error"] = f"{kind}: {message}"
                 entry["shapes"][_shape(value)] += 1
-        return parse_response(cast_to, data)
+        return parse_response(cast_to, data, strict=strict)
 
     for module in (http_mod, resource_mod, auth_mod):
         module.parse_response = recording_parse  # type: ignore[attr-defined]

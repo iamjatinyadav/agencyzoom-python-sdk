@@ -16,6 +16,14 @@ make check                       # lint + mypy --strict + tests + generated-code
 
 `make help` lists every target. Run `make test-all` before a release: it runs the suite on Python 3.8 through 3.14, and uv downloads any interpreter you don't have.
 
+The dependency-security workflow audits installed runtime versions on every supported Python version
+against public package advisories. It runs on pull requests, main-branch pushes and a weekly schedule.
+Python 3.8/3.9 retain the two explicitly listed AnyIO advisory exceptions in [SECURITY.md](SECURITY.md).
+Their full findings remain available as audit artifacts and warnings; all other findings and audit
+errors still fail enforcement. Python 3.10+ has no advisory exceptions.
+The connection-pool tests start temporary HTTP servers bound only to `127.0.0.1`; allow loopback
+network access when running the full suite in a sandbox.
+
 ---
 
 ## 2. Architecture in one page
@@ -43,6 +51,18 @@ src/agencyzoom/_async/            HAND-WRITTEN async client  ──► scripts/u
 | Pure logic | `_retry.py`, `_rate_limit.py`, `_utils.py`, `_config.py`, `_exceptions.py` | No I/O. Shared by sync and async |
 | Models | `models/_base.py` (hand-written), `models/_generated.py` | Lenient Pydantic models |
 | Concurrency shims | `_async/_compat.py`, `_sync/_compat.py` | Lock, sleep and blocking-call helpers; the only hand-written twins |
+
+Authentication views on copied clients share one session and lock, but retain their own sending
+callbacks so routing overrides also apply to authentication. Every successful token update advances
+a revision used to reject caching responses from requests that overlapped token changes. A separate
+cache revision changes on explicit session changes, fresh logins and actual token rejection; routine
+refresh preserves cache entries until their TTL expires. Explicit account changes also advance an
+identity counter, preventing 401 retries from replaying a request under another account. All session
+mutations belong in the token manager; resources must not directly replace token state.
+
+Redirects are disabled on every request, including requests through supplied HTTP clients. Async
+transports and locks bind to one event loop on first use. Keep strict response validation optional,
+but always reject malformed pagination envelopes and signal incomplete exports.
 
 **Golden rules**
 
@@ -132,6 +152,9 @@ make test-all
 | `test_endpoint_coverage.py` | Registry == spec (117 endpoints); every ID is used; path params match placeholders; every ID maps to a public method |
 | `test_auth.py` | Lazy login, refresh, 401 recovery, fallback to login, single-flight under concurrency |
 | `test_transport.py` | Retry rules, backoff, `Retry-After`, error mapping, cache, headers |
+| `test_hardening.py` | Credential redirects, account changes, session races, cache isolation, strict validation and failed exports |
+| `test_network.py` | Real loopback HTTP connection reuse, event-loop affinity and cached copies |
+| `test_contracts.py` | Executes every registered public method in both clients against the local OpenAPI wire contract; requires the downloaded spec |
 | `test_resources.py` | Request shaping (snake/camel, model/dict), pagination, uploads, nested resources |
 | `test_edge_cases.py` | Versioning and overrides, config validation, malformed responses, lifecycle, threads, event loops, rate limiting |
 

@@ -11,33 +11,44 @@ import functools
 from types import TracebackType
 from typing import Any, Callable, TypeVar
 
-__all__ = ["Lock", "run_blocking", "sleep"]
+from .._exceptions import AgencyZoomError
+
+__all__ = ["Lock", "LoopGuard", "run_blocking", "sleep"]
 
 T = TypeVar("T")
 
 sleep = asyncio.sleep
 
 
+class LoopGuard:
+    """Bind on first use and reject reuse from a different event loop."""
+
+    def __init__(self) -> None:
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def check(self) -> None:
+        loop = asyncio.get_running_loop()
+        if self._loop is None:
+            self._loop = loop
+        elif self._loop is not loop:
+            raise AgencyZoomError(
+                "Use an AsyncAgencyZoom client in one event loop; create a new client for this loop."
+            )
+
+
 class Lock:
-    """An ``asyncio.Lock`` that binds to the running event loop lazily.
+    """An asyncio lock created lazily in the client's event loop."""
 
-    Locks created outside a running loop (e.g. in ``__init__``) are bound to the
-    wrong loop on Python < 3.10, and any asyncio lock fails if a client is reused
-    under a new loop (successive ``asyncio.run()`` calls). This one is created on
-    first use and recreated if the loop changes.
-    """
-
-    __slots__ = ("_lock", "_loop")
+    __slots__ = ("_guard", "_lock")
 
     def __init__(self) -> None:
         self._lock: asyncio.Lock | None = None
-        self._loop: asyncio.AbstractEventLoop | None = None
+        self._guard = LoopGuard()
 
     async def __aenter__(self) -> None:
-        loop = asyncio.get_running_loop()
-        if self._lock is None or self._loop is not loop:
+        self._guard.check()
+        if self._lock is None:
             self._lock = asyncio.Lock()
-            self._loop = loop
         await self._lock.acquire()
 
     async def __aexit__(

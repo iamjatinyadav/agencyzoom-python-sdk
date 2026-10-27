@@ -329,7 +329,7 @@ class LoginRequest(AgencyZoomModel):
 
     username: str
     """The user name, which is the user's email"""
-    password: str
+    password: str = Field(repr=False)
     """The user's password"""
     version: OptInt = None
     """Login API version. Pass 2 to receive refreshToken, expiresIn, and tokenType in the response. Omit or use any other value for the legacy response (jwt + ownerAgent only). Example: ``2``."""
@@ -338,7 +338,7 @@ class LoginRequest(AgencyZoomModel):
 class RefreshTokenRequest(AgencyZoomModel):
     """Refresh token request model"""
 
-    refresh_token: str = Field(alias="refreshToken")
+    refresh_token: str = Field(repr=False, alias="refreshToken")
     """The refresh token JWT obtained from login or a previous refresh"""
 
 
@@ -352,7 +352,7 @@ class ResetPasswordRequest(AgencyZoomModel):
 class V4ssoLoginRequest(AgencyZoomModel):
     """V4 SSO login request model"""
 
-    code: str
+    code: str = Field(repr=False)
     """Code from v4sso callback"""
     version: OptInt = None
     """Login API version. Pass 2 to receive refreshToken, expiresIn, and tokenType in the response. Omit or use any other value for the legacy response (jwt + ownerAgent only). Example: ``2``."""
@@ -2238,11 +2238,11 @@ class GenericSuccessResponse(AgencyZoomModel):
 class LoginResponse(AgencyZoomModel):
     """Login response model. It returns the JWT token"""
 
-    jwt: Optional[str] = None
+    jwt: Optional[str] = Field(default=None, repr=False)
     """The JWT token"""
     owner_agent: OptBool = Field(default=None, alias="ownerAgent")
     """Is ownerAgent"""
-    refresh_token: Optional[str] = Field(default=None, alias="refreshToken")
+    refresh_token: Optional[str] = Field(default=None, repr=False, alias="refreshToken")
     """The refresh token JWT"""
     expires_in: OptInt = Field(default=None, alias="expiresIn")
     """Seconds until the access token expires"""
@@ -2253,9 +2253,9 @@ class LoginResponse(AgencyZoomModel):
 class RefreshTokenResponse(AgencyZoomModel):
     """Refresh token response model. Returns a new access token JWT and a new refresh token JWT."""
 
-    jwt: Optional[str] = None
+    jwt: Optional[str] = Field(default=None, repr=False)
     """The new JWT access token"""
-    refresh_token: Optional[str] = Field(default=None, alias="refreshToken")
+    refresh_token: Optional[str] = Field(default=None, repr=False, alias="refreshToken")
     """The new refresh token JWT"""
     owner_agent: OptBool = Field(default=None, alias="ownerAgent")
     """Is ownerAgent"""
@@ -2853,7 +2853,7 @@ class EmailSyncSettingInfo(AgencyZoomModel):
     """Id of agency"""
     agent_id: OptInt = Field(default=None, alias="agentId")
     """Id of agent"""
-    access_token: Optional[str] = Field(default=None, alias="accessToken")
+    access_token: Optional[str] = Field(default=None, repr=False, alias="accessToken")
     """access token"""
     sync_email: Optional[str] = Field(default=None, alias="syncEmail")
     """synced email"""

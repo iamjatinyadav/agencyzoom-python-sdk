@@ -48,16 +48,33 @@ def registry_operations() -> set[tuple[str, str]]:
 def resource_calls() -> list[tuple[str, set[str] | None]]:
     """(endpoint_id, path_param_names) for every `_call`/`_paginate` in the resources."""
     calls: list[tuple[str, set[str] | None]] = []
-    for file in RESOURCES.glob("*.py"):
-        for node in ast.walk(ast.parse(file.read_text("utf-8"))):
+    for file in [*RESOURCES.glob("*.py"), RESOURCES.parent / "_auth.py"]:
+        tree = ast.parse(file.read_text("utf-8"))
+        constants = {
+            n.targets[0].id: n.value.value
+            for n in tree.body
+            if isinstance(n, ast.Assign)
+            and isinstance(n.targets[0], ast.Name)
+            and isinstance(n.value, ast.Constant)
+            and isinstance(n.value.value, str)
+        }
+        for node in ast.walk(tree):
             if not (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
-                and node.func.attr in {"_call", "_paginate"}
+                and node.func.attr in {"_call", "_paginate", "authenticate", "_send_json"}
             ):
                 continue
             first = node.args[0]
-            assert isinstance(first, ast.Constant), f"{file.name}: endpoint IDs must be literals"
+            endpoint_id = (
+                first.value
+                if isinstance(first, ast.Constant)
+                else constants.get(first.id)
+                if isinstance(first, ast.Name)
+                else None
+            )
+            if endpoint_id is None:
+                continue  # automatic login selects the session's configured login endpoint
             params: set[str] | None = set()
             for kw in node.keywords:
                 if kw.arg == "path_params":
@@ -66,7 +83,7 @@ def resource_calls() -> list[tuple[str, set[str] | None]]:
                         if isinstance(kw.value, ast.Dict)
                         else None  # computed dynamically; can't check statically
                     )
-            calls.append((first.value, params))
+            calls.append((endpoint_id, params))
     return calls
 
 

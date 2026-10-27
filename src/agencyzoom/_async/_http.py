@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json as jsonlib
 import logging
 import time
@@ -22,7 +23,7 @@ from .._rate_limit import TokenBucket
 from .._retry import IDEMPOTENT_METHODS, compute_backoff, should_retry_status
 from .._utils import PreparedFile, TTLCache, parse_response, redact_headers
 from ._auth import AsyncTokenManager
-from ._compat import Lock, sleep
+from ._compat import Lock, LoopGuard, sleep
 
 __all__ = ["AsyncHTTPClient", "AsyncRateLimiter"]
 
@@ -56,6 +57,7 @@ class _Transport:
         self.client = client
         self.owns_client = owns_client
         self.closed = False
+        self.loop_guard = LoopGuard()
 
 
 class AsyncHTTPClient:
@@ -74,7 +76,7 @@ class AsyncHTTPClient:
                 timeout=options.timeout,
                 limits=DEFAULT_LIMITS,
                 http2=http2,
-                follow_redirects=True,  # httpx drops Authorization on cross-origin hops
+                follow_redirects=False,
             ),
             owns_client=http_client is None,
         )
@@ -94,7 +96,7 @@ class AsyncHTTPClient:
         clone._transport = self._transport
         clone._limiter = self._limiter
         clone._cache = self._cache
-        clone.auth = self.auth
+        clone.auth = self.auth.copy(clone._send_unauthenticated_json)
         return clone
 
     @property
@@ -147,17 +149,44 @@ class AsyncHTTPClient:
         cache: bool = False,
     ) -> Any:
         """Send a request and return the parsed (and optionally validated) body."""
+        self._check_open()
         method = method.upper()
         if not path.startswith("/"):
             path = f"/{path}"
         params = {k: v for k, v in (params or {}).items() if v is not None}
         cache_key = None
+        revision = self.auth.revision
+        cache_revision = self.auth.cache_revision
         if cache and self._cache is not None:
-            cache_key = f"{method} {path} {jsonlib.dumps(params, sort_keys=True, default=str)}"
+            if authenticated:
+                await self.auth.get_token()
+            revision = self.auth.revision
+            cache_revision = self.auth.cache_revision
+            # Headers may select a tenant. Hash them to avoid retaining secrets
+            # in printable cache keys; session revisions isolate account changes.
+            header_key = hashlib.sha256(
+                jsonlib.dumps(
+                    {
+                        k.lower(): v
+                        for k, v in {**self.options.default_headers, **(headers or {})}.items()
+                    },
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            cache_key = (
+                self.options.base_url,
+                method,
+                path,
+                header_key,
+                cache_revision,
+                jsonlib.dumps(params, sort_keys=True, default=str),
+            )
             hit, payload = self._cache.get(cache_key)
-            if hit:
+            if hit and cache_revision == self.auth.cache_revision:
                 logger.debug("Cache hit: %s %s", method, path)
-                return parse_response(cast_to, payload)
+                return parse_response(
+                    cast_to, payload, strict=self.options.strict_response_validation
+                )
 
         response = await self._send(
             method,
@@ -170,9 +199,14 @@ class AsyncHTTPClient:
             authenticated=authenticated,
         )
         payload = _decode(response, expect_json=cast_to is not None)
-        if cache_key is not None and self._cache is not None:
+        if (
+            cache_key is not None
+            and self._cache is not None
+            and revision == self.auth.revision
+            and cache_revision == self.auth.cache_revision
+        ):
             self._cache.set(cache_key, payload)
-        return parse_response(cast_to, payload)
+        return parse_response(cast_to, payload, strict=self.options.strict_response_validation)
 
     def clear_cache(self) -> None:
         if self._cache is not None:
@@ -182,15 +216,29 @@ class AsyncHTTPClient:
         transport = self._transport
         if transport.closed:
             return
+        transport.loop_guard.check()
         transport.closed = True
         if transport.owns_client:
             await transport.client.aclose()
 
     # ------------------------------------------------------------------ internals
 
-    async def _send_unauthenticated_json(self, endpoint_id: str, body: Mapping[str, Any]) -> Any:
+    def _check_open(self) -> None:
+        if self._transport.closed:
+            raise AgencyZoomError("This AgencyZoom client has been closed; create a new one.")
+        self._transport.loop_guard.check()
+
+    async def _send_unauthenticated_json(
+        self, endpoint_id: str, body: Mapping[str, Any] | None, token: str | None = None
+    ) -> Any:
         method, path = self.resolver.resolve(endpoint_id)
-        response = await self._send(method, path, json=body, authenticated=False)
+        response = await self._send(
+            method,
+            path,
+            json=body,
+            authenticated=False,
+            headers={"Authorization": f"Bearer {token}"} if token else None,
+        )
         return _decode(response, expect_json=True)
 
     async def _send(
@@ -205,22 +253,30 @@ class AsyncHTTPClient:
         headers: Mapping[str, str] | None = None,
         authenticated: bool = True,
     ) -> httpx.Response:
-        if self._transport.closed:
-            raise AgencyZoomError("This AgencyZoom client has been closed; create a new one.")
+        self._check_open()
         options = self.options
         retry = options.retry
         url = f"{options.base_url}{path}"
         attempt = 0
         reauthenticated = False
+        request_identity = self.auth.identity
 
         while True:
-            request_headers = {
-                "Accept": "application/json",
-                "User-Agent": options.user_agent,
-                **options.default_headers,
-                **(headers or {}),
-            }
+            self._check_open()
+            if authenticated and request_identity != self.auth.identity:
+                raise AgencyZoomError(
+                    "The authenticated account changed during the request; it was not retried."
+                )
+            request_headers = httpx.Headers(
+                {
+                    "Accept": "application/json",
+                    "User-Agent": options.user_agent,
+                    **options.default_headers,
+                    **(headers or {}),
+                }
+            )
             token: str | None = None
+            identity = self.auth.identity
             if authenticated:
                 token = await self.auth.get_token()
                 request_headers["Authorization"] = f"Bearer {token}"
@@ -239,6 +295,7 @@ class AsyncHTTPClient:
                     files=files,
                     headers=request_headers,
                     timeout=options.timeout,
+                    follow_redirects=False,  # also override a caller-supplied HTTP client's setting
                 )
             except httpx.TransportError as exc:
                 retryable = isinstance(exc, _PRE_SEND_ERRORS) or method in IDEMPOTENT_METHODS
@@ -270,7 +327,7 @@ class AsyncHTTPClient:
 
             if response.status_code == 401 and token is not None and not reauthenticated:
                 reauthenticated = True
-                if await self.auth.handle_unauthorized(token):
+                if await self.auth.handle_unauthorized(token, identity):
                     logger.debug("Received 401; retrying with a renewed token")
                     continue
 

@@ -15,10 +15,13 @@ from .._config import (
     DEFAULT_RATE_LIMIT_PER_MINUTE,
     ClientOptions,
     RetryConfig,
+    resolve_api_version,
+    resolve_base_url,
     resolve_retry,
     resolve_timeout,
 )
 from .._endpoints import EndpointResolver
+from .._exceptions import ConfigurationError
 from .._version import __version__
 from ._http import HTTPClient
 from .resources import (
@@ -77,6 +80,8 @@ class AgencyZoom:
         http_client: Bring your own ``httpx`` client (proxies, custom TLS, hooks...).
             It is not closed by this client.
         http2: Enable HTTP/2 (requires ``pip install agencyzoom-sdk[http2]``).
+        strict_response_validation: Raise ``APIResponseError`` on response model
+            mismatches instead of repairing fields or returning raw JSON.
     """
 
     def __init__(
@@ -98,6 +103,7 @@ class AgencyZoom:
         default_headers: Mapping[str, str] | None = None,
         http_client: httpx.Client | None = None,
         http2: bool = False,
+        strict_response_validation: bool = False,
     ) -> None:
         options = ClientOptions.resolve(
             base_url=base_url,
@@ -115,6 +121,7 @@ class AgencyZoom:
             cache_ttl=cache_ttl,
             default_headers=default_headers,
             user_agent=f"agencyzoom-python-sdk/{__version__}",
+            strict_response_validation=strict_response_validation,
         )
         self._http = HTTPClient(options, http_client=http_client, http2=http2)
 
@@ -205,6 +212,7 @@ class AgencyZoom:
         api_version: str | None = None,
         endpoint_overrides: Mapping[str, str] | None = None,
         api_token: str | None = None,
+        strict_response_validation: bool | None = None,
     ) -> AgencyZoom:
         """Return a client with some options changed, e.g. for a single slow call::
 
@@ -223,15 +231,19 @@ class AgencyZoom:
         if default_headers is not None:
             changes["default_headers"] = {**current.default_headers, **default_headers}
         if base_url is not None:
-            changes["base_url"] = base_url.strip().rstrip("/")
+            changes["base_url"] = resolve_base_url(base_url)
         if api_root is not None:
             changes["api_root"] = api_root
         elif api_version is not None:
-            changes["api_root"] = f"/{api_version.strip().strip('/')}/api"
+            changes["api_root"] = f"/{resolve_api_version(api_version)}/api"
         if endpoint_overrides is not None:
             changes["endpoint_overrides"] = {**current.endpoint_overrides, **endpoint_overrides}
         if api_token is not None:
             changes["api_token"] = api_token
+        if strict_response_validation is not None:
+            if not isinstance(strict_response_validation, bool):
+                raise ConfigurationError("strict_response_validation must be a boolean")
+            changes["strict_response_validation"] = strict_response_validation
         options = dataclasses.replace(current, **changes)
         EndpointResolver(options.api_root, options.endpoint_overrides)  # validate eagerly
 

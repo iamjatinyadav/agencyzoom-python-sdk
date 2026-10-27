@@ -69,7 +69,7 @@ path = "src/agencyzoom/_version.py"
 packages = ["src/agencyzoom"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/agencyzoom", "tests", "README.md", "CHANGELOG.md", "MAINTAINING.md", "LICENSE"]
+include = ["src/agencyzoom", "tests", "README.md", "CHANGELOG.md", "MAINTAINING.md", "SECURITY.md", "LICENSE"]
 
 # --------------------------------------------------------------------------- tooling
 

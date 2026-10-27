@@ -42,6 +42,20 @@ RESERVED = {
     "schema", "schema_json", "update_forward_refs", "validate", "to_api",
 }  # fmt: skip
 
+SENSITIVE_FIELDS = {
+    "password",
+    "oldpassword",
+    "newpassword",
+    "jwt",
+    "token",
+    "accesstoken",
+    "refreshtoken",
+    "apitoken",
+}
+
+# Business codes are ordinary data; authorization codes are secret in this schema.
+SENSITIVE_MODEL_FIELDS = {("V4ssoLoginRequest", "code")}
+
 # Fields whose *real* responses contradict the spec: (schema, property) ->
 # (Python annotation, note appended to the field docstring). Only add entries
 # that were observed on a live account (`make smoke ARGS=--diagnose`); the
@@ -332,6 +346,11 @@ class Generator:
                 lines.append("")
         for f in model.fields:
             args: list[str] = []
+            if (
+                f.alias.replace("_", "").lower() in SENSITIVE_FIELDS
+                or (model.name, f.alias) in SENSITIVE_MODEL_FIELDS
+            ):
+                args.append("repr=False")
             if f.alias != f.name:
                 args.append(f'alias="{f.alias}"')
             if args or not f.required:

@@ -127,7 +127,7 @@ class TestVersioning:
     def test_with_options_scopes_changes_and_shares_the_session(
         self, api: respx.MockRouter
     ) -> None:
-        login = api.post("/v1/api/auth/login").mock(
+        login = api.post("/v2/api/auth/login").mock(
             return_value=httpx.Response(200, json={"jwt": make_jwt()})
         )
         v1 = api.get("/v1/api/employees").mock(return_value=httpx.Response(200, json=[]))
@@ -208,12 +208,13 @@ class TestPathParameters:
             client.leads.get(bad)  # type: ignore[arg-type]
         assert not api.calls
 
-    def test_ids_are_url_encoded(self, api: respx.MockRouter, client: AgencyZoom) -> None:
-        route = api.get(url__regex=r".*/v1/api/leads/a%2Fb%20c$").mock(
-            return_value=httpx.Response(200, json={})
-        )
-        client.leads.get("a/b c")  # type: ignore[arg-type]
-        assert route.called
+    @pytest.mark.parametrize("value", ["a/b c", ".", "..", "1/../2", -1, 1.5, "-1", "1.0"])
+    def test_non_numeric_ids_are_rejected(
+        self, api: respx.MockRouter, client: AgencyZoom, value: object
+    ) -> None:
+        with pytest.raises(ValueError, match="lead_id"):
+            client.leads.get(value)  # type: ignore[arg-type]
+        assert not api.calls
 
     def test_string_and_int_ids(self, api: respx.MockRouter, client: AgencyZoom) -> None:
         route = api.get("/v1/api/tasks/42").mock(return_value=httpx.Response(200, json={"id": 42}))
@@ -375,12 +376,14 @@ class TestResponses:
         client.settings.employees()
         assert delays == [30.0]  # RetryConfig.max_backoff
 
-    def test_redirects_are_followed(self, api: respx.MockRouter, client: AgencyZoom) -> None:
+    def test_redirects_are_rejected(self, api: respx.MockRouter, client: AgencyZoom) -> None:
         api.get(EMPLOYEES).mock(
             return_value=httpx.Response(301, headers={"Location": f"{BASE_URL}/v1/api/staff"})
         )
-        api.get("/v1/api/staff").mock(return_value=httpx.Response(200, json=[{"id": 3}]))
-        assert client.settings.employees()[0].id == 3
+        target = api.get("/v1/api/staff").mock(return_value=httpx.Response(200, json=[{"id": 3}]))
+        with pytest.raises(AgencyZoomError, match="301"):
+            client.settings.employees()
+        assert not target.called
 
 
 # --------------------------------------------------------------------------- pagination
@@ -393,11 +396,11 @@ class TestPagination:
         route = api.post("/v1/api/tasks/list").mock(
             return_value=httpx.Response(200, json={"tasks": [{"id": 1}, {"id": 2}]})
         )
-        with caplog.at_level(logging.WARNING, logger="agencyzoom"):
-            ids = [t.id for t in client.tasks.paginate(page_size=2)]
-        assert ids == [1, 2]
+        iterator = client.tasks.paginate(page_size=2)
+        assert [next(iterator).id, next(iterator).id] == [1, 2]
+        with pytest.raises(APIResponseError, match="same page twice"):
+            next(iterator)
         assert route.call_count == 2
-        assert "same page twice" in caplog.text
 
     def test_total_count_as_string(self, api: respx.MockRouter, client: AgencyZoom) -> None:
         route = api.post("/v1/api/tasks/list").mock(
@@ -413,7 +416,8 @@ class TestPagination:
         self, api: respx.MockRouter, client: AgencyZoom, payload: object
     ) -> None:
         api.post("/v1/api/tasks/list").mock(return_value=httpx.Response(200, json=payload))
-        assert list(client.tasks.paginate()) == []
+        with pytest.raises(APIResponseError):
+            list(client.tasks.paginate())
 
     def test_starting_page_is_respected(self, api: respx.MockRouter, client: AgencyZoom) -> None:
         route = api.post("/v1/api/tasks/list").mock(
@@ -543,8 +547,8 @@ class TestLifecycle:
         assert results == [[]] * 32
         assert login.call_count == 1
 
-    def test_async_client_survives_multiple_event_loops(self, api: respx.MockRouter) -> None:
-        """Locks bind lazily, so the client works across successive asyncio.run() calls."""
+    def test_async_client_rejects_multiple_event_loops(self, api: respx.MockRouter) -> None:
+        """A client and its connection pool belong to one event loop."""
         api.post("/v1/api/auth/login").mock(
             return_value=httpx.Response(200, json={"jwt": make_jwt()})
         )
@@ -554,9 +558,14 @@ class TestLifecycle:
         async def burst() -> int:
             return len(await asyncio.gather(*(client.settings.employees() for _ in range(5))))
 
-        assert asyncio.run(burst()) == 5
-        assert asyncio.run(burst()) == 5
-        asyncio.run(client.close())
+        loop = asyncio.new_event_loop()
+        try:
+            assert loop.run_until_complete(burst()) == 5
+            with pytest.raises(AgencyZoomError, match="one event loop"):
+                asyncio.run(burst())
+        finally:
+            loop.run_until_complete(client.close())
+            loop.close()
 
     def test_rate_limiter_spaces_requests(self, api: respx.MockRouter, delays: list[float]) -> None:
         api.get(EMPLOYEES).mock(return_value=httpx.Response(200, json=[]))

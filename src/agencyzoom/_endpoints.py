@@ -216,11 +216,13 @@ def format_path(template: str, params: Mapping[str, object]) -> str:
             raise KeyError(f"Missing path parameter {name!r} for {template!r}")
         value = params[name]
         # bool is an int subclass: `get(True)` is almost certainly a bug.
-        if value is None or isinstance(value, bool):
-            raise ValueError(f"{name} must be an ID, got {value!r}")
         text = str(value).strip()
-        if not text:
-            raise ValueError(f"{name} must be a non-empty ID, got {value!r}")
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, str))
+            or not re.fullmatch(r"[0-9]+", text)
+        ):
+            raise ValueError(f"{name} must be a non-negative integer ID")
         return quote(text, safe="")
 
     return _PLACEHOLDER.sub(substitute, template)
