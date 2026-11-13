@@ -6,6 +6,15 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `client.vendor`: AgencyZoom's 22 new vendor endpoints, which create, delete and update customers,
+  leads, quotes and policies by the vendor's own string IDs (`client.vendor.customers`,
+  `.leads`, `.leads.quotes`, `.policies`). The `batch_*` methods use the enterprise endpoints and
+  send `X-Api-Token` like `policies.create`. Request models such as `VendorLeadCreateRequest` are
+  generated from the updated spec.
+- Path parameters named `vendor_*` accept any non-empty string (URL-encoded as one path segment);
+  empty values, dot segments and control characters raise `ValueError`.
+
 ## [0.2.0] - 2026-10-27
 
 ### Fixed

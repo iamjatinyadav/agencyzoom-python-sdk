@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, AsyncIterator, List, Mapping, TypeVar, overload
 
-from .._exceptions import APIResponseError
+from .._exceptions import APIResponseError, ConfigurationError
 from .._utils import PreparedFile, parse_response
 from ._http import AsyncHTTPClient
 
@@ -85,6 +85,16 @@ class AsyncAPIResource:
             authenticated=authenticated,
             cache=cache,
         )
+
+    def _api_token_headers(self, endpoint_id: str, api_token: str | None) -> dict[str, str]:
+        """The ``X-Api-Token`` header some endpoints require on top of the JWT."""
+        token = api_token or self._http.options.api_token
+        if not token:
+            raise ConfigurationError(
+                f"{endpoint_id} requires an API token: pass `api_token=` or set "
+                "AGENCYZOOM_API_TOKEN."
+            )
+        return {"X-Api-Token": token}
 
     async def _paginate(
         self,

@@ -180,3 +180,83 @@ def test_batch_delete_tasks(api: respx.MockRouter, client: AgencyZoom) -> None:
     )
     client.tasks.batch_delete(i for i in (1, 2, 3))
     assert body(route) == {"taskIds": [1, 2, 3]}
+
+
+# ------------------------------------------------------------------- vendor
+
+
+def test_vendor_ids_are_strings_encoded_as_one_segment(
+    api: respx.MockRouter, client: AgencyZoom
+) -> None:
+    route = api.delete("/v1/api/vendor/leads/crm%2F1%20a/quotes/q-7").mock(
+        return_value=httpx.Response(200, json={"result": True})
+    )
+    client.vendor.leads.quotes.delete("crm/1 a", "q-7")
+    assert route.call_count == 1
+
+
+@pytest.mark.parametrize("bad", ["", " ", ".", "..", "a\nb", None, True, 1.5])
+def test_vendor_ids_reject_unsafe_values(client: AgencyZoom, bad: object) -> None:
+    with pytest.raises(ValueError, match="vendor_customer_id"):
+        client.vendor.customers.delete(bad)  # type: ignore[arg-type]
+
+
+def test_vendor_mark_sold_shapes_body_and_parses_response(
+    api: respx.MockRouter, client: AgencyZoom
+) -> None:
+    route = api.post("/v1/api/vendor/leads/L-1/sold").mock(
+        return_value=httpx.Response(200, json={"vendorCustomerId": "C-1", "leadSourceId": 3})
+    )
+    result = client.vendor.leads.mark_sold(
+        "L-1",
+        vendor_customer_id="C-1",
+        sold_products=[{"vendor_quote_id": "Q-1", "location_id": "LOC", "is_sold": True}],
+    )
+    assert body(route) == {
+        "vendorCustomerId": "C-1",
+        "soldProducts": [{"vendorQuoteId": "Q-1", "locationId": "LOC", "isSold": True}],
+    }
+    assert (result.vendor_customer_id, result.lead_source_id) == ("C-1", 3)
+
+
+def test_vendor_batch_methods_send_api_token(api: respx.MockRouter) -> None:
+    route = api.post("/v1/api/vendor/enterprise/leads/batch-delete").mock(
+        return_value=httpx.Response(200, json={"result": True})
+    )
+    with AgencyZoom(token=make_jwt(), base_url=BASE_URL, api_token="secret") as client:
+        client.vendor.leads.batch_delete(["L-1", "L-2"], delete_contact=True)
+        client.vendor.leads.batch_delete(["L-3"], api_token="override")
+    assert body(route, 0) == {"vendorLeadIds": ["L-1", "L-2"], "deleteContact": True}
+    assert route.calls[0].request.headers["X-Api-Token"] == "secret"
+    assert route.calls[1].request.headers["X-Api-Token"] == "override"
+
+
+def test_vendor_batch_methods_require_api_token(api: respx.MockRouter, client: AgencyZoom) -> None:
+    with pytest.raises(ConfigurationError, match=r"vendor\.policies\.batch_delete requires an API"):
+        client.vendor.policies.batch_delete(["P-1"])
+    assert not api.calls
+
+
+def test_vendor_single_record_methods_do_not_need_api_token(
+    api: respx.MockRouter, client: AgencyZoom
+) -> None:
+    route = api.post("/v1/api/vendor/policies/update-status").mock(
+        return_value=httpx.Response(200, json={"result": True})
+    )
+    client.vendor.policies.update_status("P-1", 2)
+    assert body(route) == {"vendorPolicyId": "P-1", "status": 2}
+    assert "X-Api-Token" not in route.calls[0].request.headers
+
+
+async def test_async_vendor_batch_create(api: respx.MockRouter) -> None:
+    route = api.post("/v1/api/vendor/enterprise/customers/batch-create").mock(
+        return_value=httpx.Response(200, json={"result": True})
+    )
+    customer = {"vendor_customer_id": "C-1", "agent_id": 4, "email": "a@b.c", "firstname": "Ada"}
+    async with AsyncAgencyZoom(token=make_jwt(), base_url=BASE_URL, api_token="t") as client:
+        await client.vendor.customers.batch_create(customer_create_requests=[customer])
+    assert body(route) == {
+        "customerCreateRequests": [
+            {"vendorCustomerId": "C-1", "agentId": 4, "email": "a@b.c", "firstname": "Ada"}
+        ]
+    }

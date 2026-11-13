@@ -8,7 +8,7 @@ An **unofficial**, fully-typed Python client for the [AgencyZoom REST API](https
 
 > Not affiliated with or endorsed by AgencyZoom or Vertafore.
 
-- **All 117 endpoints** across 16 API groups. A test checks this against the OpenAPI spec.
+- **All 139 endpoints** across 17 API groups. A test checks this against the OpenAPI spec.
 - **Ready for API versions**: move to `v2` with one argument, or move single endpoints without a new SDK release.
 - **Sync and async** clients with an identical API (`AgencyZoom` / `AsyncAgencyZoom`).
 - **Typed models** for all 230+ schemas (Pydantic v2), with snake_case attributes and full editor autocomplete.
@@ -171,7 +171,7 @@ AgencyZoom()                                              # from environment var
 | --- | --- |
 | `AGENCYZOOM_USERNAME` / `AGENCYZOOM_PASSWORD` | Login credentials |
 | `AGENCYZOOM_TOKEN` | Existing JWT, instead of username/password |
-| `AGENCYZOOM_API_TOKEN` | `X-Api-Token`, needed only by `client.policies.create` |
+| `AGENCYZOOM_API_TOKEN` | `X-Api-Token`, needed only by `client.policies.create` and the `client.vendor` `batch_*` methods |
 | `AGENCYZOOM_BASE_URL` | API host (default `https://api.agencyzoom.com`) |
 | `AGENCYZOOM_API_VERSION` | API version (default `v1`) |
 
@@ -418,6 +418,7 @@ Two other exceptions are raised before any request is sent: `pydantic.Validation
 | Error page that isn't JSON (proxy `502` HTML) | `InternalServerError` with the text as its message |
 | ID is `None`, `True`, or blank | `ValueError` before any request is sent |
 | Path ID is negative, fractional, a dot segment, or nonnumeric | `ValueError` before any request is sent; non-negative integers and digit strings are accepted |
+| Vendor ID (`vendor_lead_id`, ...) is empty, `.`/`..`, or contains control characters | `ValueError` before any request is sent; any other string is accepted and URL-encoded as one path segment |
 | Login succeeds but returns no token | `APIResponseError` with the server's message |
 | `expiresIn` missing, garbage, or negative | Falls back to the JWT's `exp` claim, then to "valid until a 401" |
 | Huge `Retry-After` | Capped at `RetryConfig.max_backoff` |
@@ -461,6 +462,12 @@ Two other exceptions are raised before any request is sent: `pydantic.Validation
 | `client.pipelines` | `list`, `list_with_stages`, `end_stages` |
 | `client.departments` | `list` |
 | `client.business_classifications` | `search` |
+| `client.vendor.customers` | `create`, `delete`, `delete_policy`, `batch_create`\*, `batch_delete`\* |
+| `client.vendor.leads` | `create`, `create_commercial`, `delete`, `mark_sold`, `batch_create`\*, `batch_create_commercial`\*, `batch_delete`\*, `batch_mark_sold`\* |
+| `client.vendor.leads.quotes` | `create`, `delete`, `batch_create`\*, `batch_delete`\* |
+| `client.vendor.policies` | `create`, `update_status`, `batch_create`\*, `batch_update_status`\*, `batch_delete`\* |
+
+`client.vendor` addresses records by the vendor's own string IDs (`vendor_lead_id="crm-123"`) rather than AgencyZoom's integer IDs. Methods marked \* call AgencyZoom's enterprise endpoints, which also need an `X-Api-Token`: pass `api_token=` to the method or the client, or set `AGENCYZOOM_API_TOKEN`.
 
 Every method has a docstring with its HTTP method and path, and every model field has a docstring from the API spec. Hover in your editor to see them.
 

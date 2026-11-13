@@ -27,6 +27,9 @@ from ._exceptions import ConfigurationError
 __all__ = ["ENDPOINTS", "Endpoint", "EndpointResolver"]
 
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+_VENDOR_PREFIX = "vendor_"
+"""Path parameters with this prefix hold a vendor's own string ID, not an AgencyZoom integer."""
 _METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
 
 
@@ -170,6 +173,40 @@ ENDPOINTS: dict[str, Endpoint] = {
     "text_threads.search": Endpoint("POST", "/text-thread/list"),
     "v4sso.get_auth_params": Endpoint("POST", "/v4sso/get-auth-params"),
     "v4sso.login": Endpoint("POST", "/v4sso/sso-login"),
+    "vendor.customers.batch_create": Endpoint("POST", "/vendor/enterprise/customers/batch-create"),
+    "vendor.customers.batch_delete": Endpoint("POST", "/vendor/enterprise/customers/batch-delete"),
+    "vendor.customers.create": Endpoint("POST", "/vendor/customers/create"),
+    "vendor.customers.delete_policy": Endpoint(
+        "DELETE", "/vendor/customers/{vendor_customer_id}/policies/{vendor_policy_id}"
+    ),
+    "vendor.customers.delete": Endpoint("DELETE", "/vendor/customers/{vendor_customer_id}"),
+    "vendor.leads.batch_create_commercial": Endpoint(
+        "POST", "/vendor/enterprise/leads/batch-create-bizleads"
+    ),
+    "vendor.leads.batch_create": Endpoint("POST", "/vendor/enterprise/leads/batch-create"),
+    "vendor.leads.batch_delete": Endpoint("POST", "/vendor/enterprise/leads/batch-delete"),
+    "vendor.leads.batch_mark_sold": Endpoint("POST", "/vendor/enterprise/leads/batch-move-to-sold"),
+    "vendor.leads.create_commercial": Endpoint("POST", "/vendor/leads/create-bizlead"),
+    "vendor.leads.create": Endpoint("POST", "/vendor/leads/create"),
+    "vendor.leads.delete": Endpoint("POST", "/vendor/leads/{vendor_lead_id}/delete"),
+    "vendor.leads.mark_sold": Endpoint("POST", "/vendor/leads/{vendor_lead_id}/sold"),
+    "vendor.leads.quotes.batch_create": Endpoint(
+        "POST", "/vendor/enterprise/leads/batch-create-quotes"
+    ),
+    "vendor.leads.quotes.batch_delete": Endpoint(
+        "POST", "/vendor/enterprise/leads/batch-delete-quotes"
+    ),
+    "vendor.leads.quotes.create": Endpoint("POST", "/vendor/leads/{vendor_lead_id}/quotes/create"),
+    "vendor.leads.quotes.delete": Endpoint(
+        "DELETE", "/vendor/leads/{vendor_lead_id}/quotes/{vendor_quote_id}"
+    ),
+    "vendor.policies.batch_create": Endpoint("POST", "/vendor/enterprise/policies/batch-create"),
+    "vendor.policies.batch_delete": Endpoint("POST", "/vendor/enterprise/policies/batch-delete"),
+    "vendor.policies.batch_update_status": Endpoint(
+        "POST", "/vendor/enterprise/policies/batch-update-status"
+    ),
+    "vendor.policies.create": Endpoint("POST", "/vendor/policies/create"),
+    "vendor.policies.update_status": Endpoint("POST", "/vendor/policies/update-status"),
 }
 
 
@@ -216,16 +253,27 @@ def format_path(template: str, params: Mapping[str, object]) -> str:
             raise KeyError(f"Missing path parameter {name!r} for {template!r}")
         value = params[name]
         # bool is an int subclass: `get(True)` is almost certainly a bug.
-        text = str(value).strip()
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (int, str))
-            or not re.fullmatch(r"[0-9]+", text)
-        ):
-            raise ValueError(f"{name} must be a non-negative integer ID")
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            raise ValueError(f"{name} must be {_describe(name)}")
+        if name.startswith(_VENDOR_PREFIX):
+            # Vendor IDs are the caller's own opaque strings: allow anything that
+            # stays inside one path segment once encoded.
+            text = str(value)
+            if text.strip() in {"", ".", ".."} or _CONTROL.search(text):
+                raise ValueError(f"{name} must be {_describe(name)}")
+        else:
+            text = str(value).strip()
+            if not re.fullmatch(r"[0-9]+", text):
+                raise ValueError(f"{name} must be {_describe(name)}")
         return quote(text, safe="")
 
     return _PLACEHOLDER.sub(substitute, template)
+
+
+def _describe(name: str) -> str:
+    if name.startswith(_VENDOR_PREFIX):
+        return "a non-empty vendor ID string (not '.' or '..')"
+    return "a non-negative integer ID"
 
 
 def _parse_override(endpoint_id: str, value: str) -> Endpoint:

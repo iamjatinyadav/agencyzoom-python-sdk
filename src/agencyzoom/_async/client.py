@@ -41,6 +41,7 @@ from .resources import (
     AsyncTasks,
     AsyncTextThreads,
     AsyncV4SSO,
+    AsyncVendor,
 )
 
 __all__ = ["AsyncAgencyZoom"]
@@ -60,7 +61,8 @@ class AsyncAgencyZoom:
         password: AgencyZoom password.
         token: An existing JWT, instead of username/password.
         refresh_token: Refresh token accompanying ``token``, enabling renewal.
-        api_token: ``X-Api-Token`` value, required only by ``policies.create``.
+        api_token: ``X-Api-Token`` value, required only by ``policies.create`` and the
+            ``vendor.*.batch_*`` enterprise endpoints.
         base_url: Override the API host (e.g. for a proxy or test server).
         api_version: API version used in every path (``/{api_version}/api/...``).
             Defaults to ``"v1"`` or ``AGENCYZOOM_API_VERSION``.
@@ -196,6 +198,10 @@ class AsyncAgencyZoom:
     @cached_property
     def business_classifications(self) -> AsyncBusinessClassifications:
         return AsyncBusinessClassifications(self._http)
+
+    @cached_property
+    def vendor(self) -> AsyncVendor:
+        return AsyncVendor(self._http)
 
     # ------------------------------------------------------------------ flexibility
 

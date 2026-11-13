@@ -149,7 +149,7 @@ make test-all
 
 | Suite | What it guarantees |
 | --- | --- |
-| `test_endpoint_coverage.py` | Registry == spec (117 endpoints); every ID is used; path params match placeholders; every ID maps to a public method |
+| `test_endpoint_coverage.py` | Registry == spec (139 endpoints); every ID is used; path params match placeholders; every ID maps to a public method |
 | `test_auth.py` | Lazy login, refresh, 401 recovery, fallback to login, single-flight under concurrency |
 | `test_transport.py` | Retry rules, backoff, `Retry-After`, error mapping, cache, headers |
 | `test_hardening.py` | Credential redirects, account changes, session races, cache isolation, strict validation and failed exports |

@@ -24,6 +24,13 @@ from .service_tickets import ServiceTickets
 from .settings import Settings
 from .tasks import Tasks
 from .threads import EmailThreads, TextThreads
+from .vendor import (
+    Vendor,
+    VendorCustomers,
+    VendorLeadQuotes,
+    VendorLeads,
+    VendorPolicies,
+)
 
 __all__ = [
     "V4SSO",
@@ -50,4 +57,9 @@ __all__ = [
     "Tasks",
     "TextThreads",
     "Vehicles",
+    "Vendor",
+    "VendorCustomers",
+    "VendorLeadQuotes",
+    "VendorLeads",
+    "VendorPolicies",
 ]

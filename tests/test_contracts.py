@@ -170,9 +170,9 @@ def assert_request(
         "content", {}
     ):
         assert json.loads(request.content) == expected_body
-    if endpoint_id == "policies.create":
-        assert request.headers["X-Api-Token"] == "sample-api-token"
     for parameter in operation.get("parameters", []):
+        if parameter.get("in") == "header" and parameter["name"] == "X-Api-Token":
+            assert request.headers["X-Api-Token"] == "sample-api-token"
         if parameter.get("in") == "query" and parameter["name"] == "type":
             assert request.url.params["type"] == "lead"
     if not endpoint_id.startswith(("auth.", "v4sso.")) or endpoint_id == "auth.logout":

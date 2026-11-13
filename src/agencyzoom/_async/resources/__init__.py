@@ -22,6 +22,13 @@ from .service_tickets import AsyncServiceTickets
 from .settings import AsyncSettings
 from .tasks import AsyncTasks
 from .threads import AsyncEmailThreads, AsyncTextThreads
+from .vendor import (
+    AsyncVendor,
+    AsyncVendorCustomers,
+    AsyncVendorLeadQuotes,
+    AsyncVendorLeads,
+    AsyncVendorPolicies,
+)
 
 __all__ = [
     "AsyncAuth",
@@ -48,4 +55,9 @@ __all__ = [
     "AsyncTextThreads",
     "AsyncV4SSO",
     "AsyncVehicles",
+    "AsyncVendor",
+    "AsyncVendorCustomers",
+    "AsyncVendorLeadQuotes",
+    "AsyncVendorLeads",
+    "AsyncVendorPolicies",
 ]

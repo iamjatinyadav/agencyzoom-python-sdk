@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from ..._exceptions import ConfigurationError
 from ..._utils import build_body
 from ...models import (
     EnterprisePolicyCreateRequest,
@@ -37,16 +36,12 @@ class AsyncPolicies(AsyncAPIResource):
         This endpoint additionally requires an ``X-Api-Token`` header: pass
         ``api_token`` here, to the client, or set ``AGENCYZOOM_API_TOKEN``.
         """
-        token = api_token or self._http.options.api_token
-        if not token:
-            raise ConfigurationError(
-                "policies.create requires an API token: pass `api_token=` or set AGENCYZOOM_API_TOKEN."
-            )
+        headers = self._api_token_headers("policies.create", api_token)
         payload = build_body(EnterprisePolicyCreateRequest, body, fields)
         return await self._call(
             "policies.create",
             body=payload,
-            headers={"X-Api-Token": token},
+            headers=headers,
             cast_to=GenericSuccessResponse,
         )
 

@@ -240,7 +240,30 @@ __all__ = [
     "V4ssoLoginRequest",
     "VehicleRequest",
     "Vendor",
+    "VendorBatchLeadMoveToSoldData",
+    "VendorBizLeadBatchCreateRequest",
+    "VendorBizLeadCreateRequest",
+    "VendorCustomerCreateRequest",
+    "VendorEnterpriseCustomerBatchCreateRequest",
+    "VendorEnterpriseCustomerBatchDeleteRequest",
+    "VendorLeadBatchCreateQuoteData",
+    "VendorLeadBatchCreateQuotesRequest",
+    "VendorLeadBatchCreateRequest",
+    "VendorLeadBatchDeleteQuotesRequest",
+    "VendorLeadBatchDeleteRequest",
+    "VendorLeadBatchMoveToSoldRequest",
+    "VendorLeadCreateQuoteRequest",
+    "VendorLeadCreateRequest",
+    "VendorLeadDeleteRequest",
+    "VendorLeadMoveToSoldRequest",
     "VendorLeadSoldResponse",
+    "VendorLeadUpdateQuoteRequest",
+    "VendorPolicyBatchCreateRequest",
+    "VendorPolicyBatchDeleteRequest",
+    "VendorPolicyBatchUpdateStatusRequest",
+    "VendorPolicyCreateRequest",
+    "VendorPolicyUpdateStatusRequest",
+    "VendorSoldProduct",
     "WebLeadWebhookRequest",
     "Workflow",
     "WorkflowStage",
@@ -2148,6 +2171,304 @@ class TaskUpdateRequest(TaskCreateRequest):
 
     status: OptInt = None
     """Task status. 0: open, 1: completed"""
+
+
+class VendorCustomerCreateRequest(CustomerUpdateRequest):
+    """customer creation request model"""
+
+    vendor_customer_id: str = Field(alias="vendorCustomerId")
+    """The Vendor Customer Id"""
+    agent_id: int = Field(alias="agentId")
+    """The producer's ID"""
+    email: str
+    """Customer email"""
+    firstname: str
+    """Customer first name"""
+
+
+class VendorEnterpriseCustomerBatchCreateRequest(AgencyZoomModel):
+    """Batch customer creation request model."""
+
+    customer_create_requests: List[VendorCustomerCreateRequest] = Field(
+        alias="customerCreateRequests"
+    )
+    """A list of customer"""
+
+
+class VendorEnterpriseCustomerBatchDeleteRequest(AgencyZoomModel):
+    """customer delete request model"""
+
+    vendor_customer_ids: List[str] = Field(alias="vendorCustomerIds")
+    """A list of vendor customer Ids"""
+    delete_contact: OptBool = Field(default=None, alias="deleteContact")
+    """Delete the contacts?"""
+
+
+class VendorBizLeadCreateRequest(BizLeadDataRequest):
+    """Commerical lead creation request model"""
+
+    vendor_lead_id: str = Field(alias="vendorLeadId")
+    """The vendor lead ID"""
+    assign_to: int = Field(alias="assignTo")
+    """Assigned to producer/agent ID"""
+    country: str
+    """country"""
+    email: str
+    """Lead email"""
+    firstname: str
+    """Lead first name"""
+    lead_source_id: int = Field(alias="leadSourceId")
+    """Lead source ID"""
+    pipeline_id: int = Field(alias="pipelineId")
+    """Pipeline Id"""
+    stage_id: int = Field(alias="stageId")
+    """Stage Id"""
+
+
+class VendorBizLeadBatchCreateRequest(AgencyZoomModel):
+    """Batch commerical lead creation request model."""
+
+    lead_create_requests: List[VendorBizLeadCreateRequest] = Field(alias="leadCreateRequests")
+    """A list of commerical lead"""
+
+
+class VendorLeadCreateQuoteRequest(LeadQuoteCreateRequest):
+    """quote creation request model"""
+
+    vendor_quote_id: str = Field(alias="vendorQuoteId")
+    """The vendorQuoteId"""
+    carrier_id: int = Field(alias="carrierId")
+    """The ID of the carrier. Optional if standardCarrierCode is provided."""
+    items: int
+    """The number of items Example: ``1``."""
+    premium: int
+    """The premium amount Example: ``300``."""
+    product_line_id: int = Field(alias="productLineId")
+    """The ID of the product Line. Optional if standardProductLineCode is provided."""
+
+
+class VendorLeadBatchCreateQuoteData(VendorLeadCreateQuoteRequest):
+    """quote creation request model"""
+
+    vendor_lead_id: str = Field(alias="vendorLeadId")
+    """The vendorLeadId"""
+    carrier_id: int = Field(alias="carrierId")
+    """The ID of the carrier. Optional if standardCarrierCode is provided."""
+    items: int
+    """The number of items Example: ``1``."""
+    premium: int
+    """The premium amount Example: ``300``."""
+    product_line_id: int = Field(alias="productLineId")
+    """The ID of the product Line. Optional if standardProductLineCode is provided."""
+    vendor_quote_id: str = Field(alias="vendorQuoteId")
+    """The vendorQuoteId"""
+
+
+class VendorLeadBatchCreateQuotesRequest(AgencyZoomModel):
+    """quote update request model"""
+
+    lead_create_quote_requests: List[VendorLeadBatchCreateQuoteData] = Field(
+        alias="leadCreateQuoteRequests"
+    )
+    """A list of quotes"""
+
+
+class VendorLeadCreateRequest(LeadDataRequest):
+    """lead creation or update request model"""
+
+    vendor_lead_id: str = Field(alias="vendorLeadId")
+    """The vendor lead ID"""
+    assign_to: int = Field(alias="assignTo")
+    """Assigned to producer/agent ID"""
+    country: str
+    """country"""
+    email: str
+    """Lead email"""
+    firstname: str
+    """Lead first name"""
+    lead_source_id: int = Field(alias="leadSourceId")
+    """Lead source ID"""
+    pipeline_id: int = Field(alias="pipelineId")
+    """Pipeline Id"""
+    stage_id: int = Field(alias="stageId")
+    """Stage Id"""
+
+
+class VendorLeadBatchCreateRequest(AgencyZoomModel):
+    """Batch lead creation request model."""
+
+    lead_create_requests: List[VendorLeadCreateRequest] = Field(alias="leadCreateRequests")
+    """A list of lead"""
+
+
+class VendorLeadBatchDeleteQuotesRequest(AgencyZoomModel):
+    """quote delete request model"""
+
+    vendor_quote_ids: List[str] = Field(alias="vendorQuoteIds")
+    """A list of vendor quote Ids"""
+
+
+class VendorLeadBatchDeleteRequest(AgencyZoomModel):
+    """Batch lead delete request model."""
+
+    vendor_lead_ids: List[str] = Field(alias="vendorLeadIds")
+    """A list of vendor lead Ids"""
+    delete_contact: OptBool = Field(default=None, alias="deleteContact")
+    """Delete the contacts?"""
+
+
+class VendorSoldProduct(AgencyZoomModel):
+    """Vendor Product sold model"""
+
+    carrier_id: OptInt = Field(default=None, alias="carrierId")
+    """The Carrier ID. Optional if standardCarrierCode is provided."""
+    standard_carrier_code: Optional[str] = Field(default=None, alias="standardCarrierCode")
+    """The standard code of carrier."""
+    product_line_id: OptInt = Field(default=None, alias="productLineId")
+    """The product Line ID. Optional if standardProductLineCode is provided."""
+    standard_product_line_code: Optional[str] = Field(default=None, alias="standardProductLineCode")
+    """The standard code of product Line."""
+    premium: OptInt = None
+    """The premium amount Example: ``300``."""
+    items: OptInt = None
+    """The number of items Example: ``1``."""
+    lead_source_id: OptInt = Field(default=None, alias="leadSourceId")
+    """The Lead Source ID"""
+    effective_date: Optional[str] = Field(default=None, alias="effectiveDate")
+    """Pollicy effective date"""
+    expiry_date: Optional[str] = Field(default=None, alias="expiryDate")
+    """Pollicy expiry date"""
+    sold_date: Optional[str] = Field(default=None, alias="soldDate")
+    """Pollicy sold date"""
+    location_id: str = Field(alias="locationId")
+    """Location where the policy is sold"""
+    policy_number: Optional[str] = Field(default=None, alias="policyNumber")
+    """Policy number"""
+    is_sold: bool = Field(alias="isSold")
+    """Is Sold?"""
+    department_code: Optional[str] = Field(default=None, alias="departmentCode")
+    """Department code"""
+    group_code: Optional[str] = Field(default=None, alias="groupCode")
+    """Group code"""
+    csr_id: OptInt = Field(default=None, alias="csrId")
+    """The Csr ID"""
+    vendor_quote_id: str = Field(alias="vendorQuoteId")
+    """The corresponding vendor quote ID"""
+    vendor_policy_id: Optional[str] = Field(default=None, alias="vendorPolicyId")
+    """The corresponding vendor policy ID"""
+
+
+class VendorLeadMoveToSoldRequest(AgencyZoomModel):
+    """lead move to sold request model"""
+
+    keep_open: OptBool = Field(default=None, alias="keepOpen")
+    """Keep lead open. This open happen when there is unsold lead"""
+    vendor_customer_id: str = Field(alias="vendorCustomerId")
+    """The Vendor Customer Id"""
+    sold_products: List[VendorSoldProduct] = Field(alias="soldProducts")
+    """The list of products sold"""
+
+
+class VendorBatchLeadMoveToSoldData(VendorLeadMoveToSoldRequest):
+    """lead move to sold request model"""
+
+    vendor_lead_id: str = Field(alias="vendorLeadId")
+    """The vendorLeadId"""
+    sold_products: List[VendorSoldProduct] = Field(alias="soldProducts")
+    """The list of products sold"""
+    vendor_customer_id: str = Field(alias="vendorCustomerId")
+    """The Vendor Customer Id"""
+
+
+class VendorLeadBatchMoveToSoldRequest(AgencyZoomModel):
+    """lead move to sold request model"""
+
+    lead_move_to_sold_requests: List[VendorBatchLeadMoveToSoldData] = Field(
+        alias="leadMoveToSoldRequests"
+    )
+    """A list of sold information"""
+
+
+class VendorLeadDeleteRequest(AgencyZoomModel):
+    """lead delete request model."""
+
+    delete_contact: OptBool = Field(default=None, alias="deleteContact")
+    """Delete the contacts?"""
+
+
+class VendorLeadUpdateQuoteRequest(LeadQuoteUpdateRequest):
+    """quote update request model"""
+
+    carrier_id: int = Field(alias="carrierId")
+    """The ID of the carrier. Optional if standardCarrierCode is provided."""
+    items: int
+    """The number of items Example: ``1``."""
+    premium: int
+    """The premium amount Example: ``300``."""
+    product_line_id: int = Field(alias="productLineId")
+    """The ID of the product Line. Optional if standardProductLineCode is provided."""
+
+
+class VendorPolicyCreateRequest(PolicyUpdateRequest):
+    """policy creation request model"""
+
+    vendor_customer_id: str = Field(alias="vendorCustomerId")
+    """The customer's vendor ID"""
+    vendor_policy_id: str = Field(alias="vendorPolicyId")
+    """The policy's vendor ID"""
+    meta: Optional[Dict[str, Any]] = None
+    """A list of key-value pairs. You can store custom data with them. The metadata will be passed to the webhook along with the generated IDs."""
+    agency_number: str = Field(alias="agencyNumber")
+    """The location number Example: ``A0A0070``."""
+    agent_id: int = Field(alias="agentId")
+    """The producer ID Example: ``6818``."""
+    carrier_id: int = Field(alias="carrierId")
+    """The ID of the carrier. Optional if standardCarrierCode is provided. Example: ``91``."""
+    effective_date: str = Field(alias="effectiveDate")
+    """Effective date Example: ``08/29/2019``."""
+    expiry_date: str = Field(alias="expiryDate")
+    """Expiry date Example: ``08/29/2020``."""
+    items: int
+    """The number of items Example: ``1``."""
+    lead_source_id: int = Field(alias="leadSourceId")
+    """The lead source id Example: ``10703``."""
+    policy_type: int = Field(alias="policyType")
+    """The ID of the policy type. Optional if standardProductLineCode is provided. Example: ``25``."""
+    premium: int
+    """The policy premium amount in cents Example: ``34``."""
+    sold_date: str = Field(alias="soldDate")
+    """The sold date Example: ``08/29/2019``."""
+
+
+class VendorPolicyBatchCreateRequest(AgencyZoomModel):
+    """Batch policy creation request model."""
+
+    policy_create_requests: List[VendorPolicyCreateRequest] = Field(alias="policyCreateRequests")
+    """A list of policies"""
+
+
+class VendorPolicyBatchDeleteRequest(AgencyZoomModel):
+    """Batch policy deletion request model."""
+
+    vendor_policy_ids: List[str] = Field(alias="vendorPolicyIds")
+
+
+class VendorPolicyUpdateStatusRequest(AgencyZoomModel):
+    """policy update status request model"""
+
+    vendor_policy_id: str = Field(alias="vendorPolicyId")
+    """The policy's vendor id"""
+    status: int
+    """Policy's status. 0: Cancelled, 1: Active, 10: Active-New, 11: Active-Renewed, 12: Active-Reinstated, 13: Active-Rewritten"""
+
+
+class VendorPolicyBatchUpdateStatusRequest(AgencyZoomModel):
+    """Batch update status for policies request model."""
+
+    policy_update_status_requests: List[VendorPolicyUpdateStatusRequest] = Field(
+        alias="policyUpdateStatusRequests"
+    )
+    """A list of statuses"""
 
 
 class WebLeadWebhookRequest(AgencyZoomModel):

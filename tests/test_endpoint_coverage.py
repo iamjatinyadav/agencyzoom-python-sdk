@@ -94,7 +94,7 @@ def test_registry_matches_the_spec_exactly() -> None:
         f"Spec endpoints missing from the registry: {sorted(spec - registry)}"
     )
     assert not registry - spec, f"Registry endpoints not in the spec: {sorted(registry - spec)}"
-    assert len(ENDPOINTS) == len(spec) == 117
+    assert len(ENDPOINTS) == len(spec) == 139
 
 
 def test_every_registered_endpoint_is_used_and_every_used_one_is_registered() -> None:
