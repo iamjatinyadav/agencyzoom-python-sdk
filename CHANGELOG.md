@@ -6,6 +6,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-13
+
 ### Added
 - `client.vendor`: AgencyZoom's 22 new vendor endpoints, which create, delete and update customers,
   leads, quotes and policies by the vendor's own string IDs (`client.vendor.customers`,
